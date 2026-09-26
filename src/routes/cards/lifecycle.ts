@@ -80,7 +80,8 @@ async function maybeAutoCompleteCard(db: D1Database, cardId: number, userId: num
   return true
 }
 
-async function syncOrderStatusFromCards(db: D1Database, orderId: number) {
+// 정본 — printEvents(에이전트 경로)도 이것을 부른다. 사본을 만들지 말 것(사본이 SHIPPED/CANCELLED 스킵·조건부 UPDATE·이력을 빠뜨렸다).
+export async function syncOrderStatusFromCards(db: D1Database, orderId: number) {
   // Option B: 단일 SELECT로 카드+주문 상태를 원자적 스냅샷으로 조회
   const snapshot = await db.prepare(`
     SELECT
@@ -1319,14 +1320,19 @@ cardsLifecycleRouter.patch('/:id/revert', async (c) => {
 
     const ef = cardEntityScope(c)  // #432: 타 법인 카드 되돌리기 차단
     const card = await c.env.DB.prepare(
-      `SELECT id, status, order_id, card_number FROM cards WHERE id = ?${ef.clause}`
-    ).bind(id, ...ef.params).first<{ id: number; status: string; order_id: number; card_number: string }>()
+      `SELECT id, status, order_id, card_number, shipped_at FROM cards WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string; order_id: number; card_number: string; shipped_at: string | null }>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
     }
     if (card.status !== 'PRINT_DONE') {
       return c.json({ success: false, error: '출력완료 상태의 카드만 되돌릴 수 있습니다.' }, 400)
+    }
+    // 출고된 카드는 먼저 출고취소 — 여기서 되돌리면 자재는 환원되는데 주문은 SHIPPED 에 남는다
+    //   (syncOrderStatusFromCards 가 SHIPPED 주문을 건너뛴다)
+    if (card.shipped_at) {
+      return c.json({ success: false, error: '이미 출고된 카드입니다. 출고취소 후 되돌려 주세요.' }, 400)
     }
 
     // ★인쇄 자재 자동차감 환원 — 출력을 안 한 것으로 되돌리므로 자재도 돌아와야 한다.

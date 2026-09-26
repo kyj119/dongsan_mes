@@ -6,21 +6,21 @@
   if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(5, 8);
 })();
 
-const STATUS_COLOR = {
+var STATUS_COLOR = {
   PENDING: 'bg-gray-100 text-gray-700',
   PROCESSING: 'bg-blue-50 text-blue-700',
   COMPLETED: 'bg-green-50 text-green-700',
   FAILED: 'bg-red-50 text-red-700',
   CANCELLED: 'bg-gray-100 text-gray-600'
 };
-const STATUS_LABEL = {
+var STATUS_LABEL = {
   PENDING: '대기',
   PROCESSING: '진행중',
   COMPLETED: '완료',
   FAILED: '실패',
   CANCELLED: '취소'
 };
-const TYPE_LABEL = {
+var TYPE_LABEL = {
   AI_PROCESS: 'AI 파일 처리',
   MANUAL: '수동'
 };

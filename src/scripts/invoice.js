@@ -317,7 +317,7 @@ async function createTaxInvoice() {
     try {
         var res = await axios.post('/api/tax-invoices', { order_id: ORDER_ID });
         if (res.data.success) {
-            navigateTo('/tax-invoices?open=' + res.data.data.id);
+            window.location.href = '/tax-invoices?open=' + res.data.data.id;   // 독립 HTML — shell.js(navigateTo) 없음
         } else {
             showToastError('세금계산서 발행 실패: ' + (res.data.error || '알 수 없는 오류'));
         }

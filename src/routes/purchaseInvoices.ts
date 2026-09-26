@@ -5,6 +5,7 @@ import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { packFactor } from '../utils/unitConvert'
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 import { kstYmd } from '../utils/kstDate'
+import { judgeBasePriceSync } from '../utils/purchasePriceSync'
 
 const purchaseInvoices = new Hono<HonoEnv>()
 purchaseInvoices.use('*', authMiddleware)
@@ -117,8 +118,8 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
 
   const ef = entityFilter(c, 'po')
   const po = await c.env.DB.prepare(
-    `SELECT po.id, po.po_number, po.supplier_id FROM purchase_orders po WHERE po.id = ?${ef.clause}`
-  ).bind(po_id, ...ef.params).first<{ id: number; po_number: string; supplier_id: number }>()
+    `SELECT po.id, po.po_number, po.supplier_id, COALESCE(po.discount_amount, 0) AS discount_amount FROM purchase_orders po WHERE po.id = ?${ef.clause}`
+  ).bind(po_id, ...ef.params).first<{ id: number; po_number: string; supplier_id: number; discount_amount: number }>()
   if (!po) return c.json({ success: false, error: 'PO를 찾을 수 없습니다.' }, 404)
 
   const eid = getEntityId(c) || 1
@@ -192,12 +193,13 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
     // N+1 제거: base_price 일괄 조회 후 upsert/UPDATE/history를 db.batch로 묶음
     const priceItemIds = [...new Set(invoiceItems.filter((ii) => ii.item_id).map((ii) => ii.item_id as number))]
     const basePriceMap = new Map<number, number>()
+    const salesItemMap = new Map<number, number | null>()
     if (priceItemIds.length > 0) {
       const bph = priceItemIds.map(() => '?').join(',')
       const { results: baseRows } = await c.env.DB.prepare(
-        `SELECT id, base_price FROM items WHERE id IN (${bph})`
-      ).bind(...priceItemIds).all<{ id: number; base_price: number }>()
-      for (const r of baseRows) basePriceMap.set(r.id, r.base_price)
+        `SELECT id, base_price, is_sales_item FROM items WHERE id IN (${bph})`
+      ).bind(...priceItemIds).all<{ id: number; base_price: number; is_sales_item: number | null }>()
+      for (const r of baseRows) { basePriceMap.set(r.id, r.base_price); salesItemMap.set(r.id, r.is_sales_item) }
     }
     const priceStmts: D1PreparedStatement[] = []
     for (const ii of invoiceItems) {
@@ -209,7 +211,10 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
         ).bind(po.supplier_id, ii.item_id, ii.unit_price, ii.unit_price))
       }
       const oldBase = basePriceMap.get(ii.item_id)
-      if (oldBase !== undefined && oldBase !== ii.unit_price) {
+      // 입고 Phase4 와 같은 판정 — 판매품목의 base_price 는 고객 노출 단가라 매입가로 덮지 않는다
+      const verdict = oldBase === undefined ? { sync: false }
+        : judgeBasePriceSync({ base_price: oldBase, is_sales_item: salesItemMap.get(ii.item_id) }, ii.unit_price)
+      if (verdict.sync) {
         priceStmts.push(c.env.DB.prepare('UPDATE items SET base_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(ii.unit_price, ii.item_id))
         priceStmts.push(c.env.DB.prepare(
           `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by, entity_id)
@@ -232,15 +237,17 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
   `).bind(po_id).first<{ subtotal: number; vat: number }>()
   const subtotal = totals?.subtotal || 0
   const vat = totals?.vat || 0
+  // 발주 저장(core.ts)과 같은 산식 — 할인을 빼지 않으면 확정 때마다 할인이 사라진다
+  const discount = Number(po.discount_amount || 0)
   await c.env.DB.prepare(
     `UPDATE purchase_orders SET total_amount = ?, vat_amount = ?, final_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-  ).bind(subtotal, vat, subtotal + vat, po_id).run()
+  ).bind(subtotal, vat, subtotal + vat - discount, po_id).run()
 
   // 3.5) 지급예정(cash_schedule OUT) 물질화 — 매입확정 시점 금액으로 UPSERT
   //   PURCHASE OUT은 cashflowEngine에서 물질화 전용(온더플라이 미계산)이라 이중계산 없음.
   //   auto-generate와 동일하게 source_id=po_id로 dedup → 단가미정 발주의 잠정 금액을 확정 금액으로 정정.
   try {
-    const payable = subtotal + vat
+    const payable = subtotal + vat - discount
     let dueStr: string | null = due_date || null
     if (!dueStr) {
       // 공급사 결제조건(MONTHLY 월말/이월결제 포함)을 반영 — 매출측과 대칭 (H1a)

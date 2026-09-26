@@ -730,8 +730,11 @@ taxInvoicesIssueRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
             const ph = oChunk.map(() => '?').join(',')
             const gr = await c.env.DB.prepare(
               `SELECT g.id as group_id, g.order_id, o.order_type FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
-               WHERE g.order_id IN (${ph}) AND g.entity_id = ?`
-            ).bind(...oChunk, inv.entity_id).all<{ group_id: number; order_id: number; order_type: string | null }>()
+               WHERE g.order_id IN (${ph}) AND g.entity_id = ?
+                 AND (g.tax_invoice_id IS NULL OR g.tax_invoice_id = ?)`
+              // ↑ 레거시 「미연결」 그룹만 폴백 대상 — 수정발행(MODIFY)을 취소하면 다른(원본) 계산서에
+              //   묶인 그룹까지 미청구로 되돌리던 구멍(2026-09-26 리뷰)
+            ).bind(...oChunk, inv.entity_id, id).all<{ group_id: number; order_id: number; order_type: string | null }>()
             groups.push(...(gr.results || []))
           }
         }

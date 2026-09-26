@@ -19,8 +19,8 @@
 ### AP-003: Source/Publish JSX 불일치
 - **발견**: ia-automat | **횟수**: 2+ | **마지막**: 2026-02
 - **증상**: source 수정 후 publish 미반영 → Illustrator PC에서 구버전 실행
-- **올바른 패턴**: source 수정 → publish 복사 → NAS 복사 → Automat 재시작
-- **탐지**: `diff` source vs publish JSX 3쌍
+- **올바른 패턴**: source 수정 → `npm run ia:deploy`(런타임 = 실행 중 exe 폴더·Z:, `publish/` 아님)
+- **탐지**: `npm run audit:ia-jsx`(드리프트 시 exit 1) — 옛 「publish 3쌍 diff」는 대상 파일이 없어 무의미
 
 ### AP-004: parseInt로 금액 처리
 - **발견**: frontend | **횟수**: 1 | **마지막**: 2026-02

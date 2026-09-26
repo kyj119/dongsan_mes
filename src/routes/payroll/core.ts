@@ -800,7 +800,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
              e.hire_date, e.resignation_date
       FROM payroll p
       JOIN employees e ON e.id = p.employee_id
-      WHERE p.pay_period = ? AND p.status != 'PAID' AND p.published_at IS NULL${efP.clause}
+      WHERE p.pay_period = ? AND p.status = 'PENDING' AND p.published_at IS NULL${efP.clause}
     `
     // 80 청크 - body.employee_ids 는 호출자가 정한다(상한 가드 없음). 청크별로 같은 조건을 돌려
     //   결과를 잇는다 - WHERE 의 나머지가 동일하므로 합집합은 원래 결과와 같다.
@@ -918,6 +918,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           overtime_hours = pro.overtime_hours
           nightPay = pro.night_pay
           holidayPay = pro.holiday_pay
+          hourlyWage = pro.hourly_wage   // preview·save 와 같은 시급 — 누락 시 월중 입퇴사자 결근 공제가 0
         } else if (fixedOTHours > 0) {
           // 고정연장(포괄임금): 통상시급(÷225.5) 기준 분해 + 추가연장/야간/휴일 가산
           const inc = calcInclusivePay({
@@ -1007,7 +1008,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
                 employer_employment_insurance = ?, employer_industrial_accident = ?,
                 total_deduction = ?, net_pay = ?,
                 attendance_synced_at = datetime('now'), updated_at = datetime('now')
-            WHERE id = ?
+            WHERE id = ? AND status = 'PENDING'   -- #B1: 조회 후 승인된 급여를 덮지 않게(대상 선정과 같은 조건)
           `).bind(
             newBase, overtime_hours, extraOT, overtime_pay,
             nightPay, holidayPay,
@@ -1206,7 +1207,7 @@ coreRouter.post('/recalc-deductions', requireRole('ADMIN', 'MANAGER'), async (c)
              e.name, e.dependents_count, e.children_under_20_count, e.income_tax_table_option
       FROM payroll p
       JOIN employees e ON e.id = p.employee_id
-      WHERE p.pay_period = ? AND p.status != 'PAID' AND p.published_at IS NULL${efP.clause}
+      WHERE p.pay_period = ? AND p.status = 'PENDING' AND p.published_at IS NULL${efP.clause}
     `
     // 80 청크 - body.employee_ids 는 호출자가 정한다(상한 가드 없음). 청크별로 같은 조건을 돌려
     //   결과를 잇는다 - WHERE 의 나머지가 동일하므로 합집합은 원래 결과와 같다.
@@ -1273,7 +1274,7 @@ coreRouter.post('/recalc-deductions', requireRole('ADMIN', 'MANAGER'), async (c)
                  employer_national_pension = ?, employer_health_insurance = ?, employer_long_term_care = ?,
                  employer_employment_insurance = ?, employer_industrial_accident = ?,
                  total_deduction = ?, net_pay = ?, updated_at = datetime('now')
-           WHERE id = ?
+           WHERE id = ? AND status = 'PENDING'   -- #B1 확정 잠금
         `).bind(
           d.national_pension, d.health_insurance, d.long_term_care_insurance,
           d.employment_insurance, d.income_tax, d.local_tax,

@@ -8,6 +8,7 @@ import { entityFilter, orderVisibilityFilter, getEntityId, getWriteEntityId, ENT
 import { validateUpload } from '../utils/uploadValidation'
 import { hydrateGroups, hydrateGroupsJson, hydrateCanvasJson, externalizeGroups } from '../utils/thumbnailStore'
 import { kstDateOf } from '../utils/kstDate'
+import { parsePlateInfo } from '../utils/plateInfo'
 
 const workbenchRouter = new Hono<HonoEnv>()
 
@@ -732,6 +733,10 @@ workbenchRouter.post('/intakes', async (c) => {
     if (body.thumb_base64) {
       // thumb_hi_base64 = 인쇄용 고해상도(패널이 thumb_hi.png 를 함께 굽는다). 없으면 sm 만 저장하고
       //   작업지시서는 자동으로 sm 로 내려간다 — 구버전 패널이 붙은 PC 도 그대로 동작한다.
+      // ★판 정보(2026-09-26 작업지시서 「가」 안) — 재단 패널이 한 장을 판 여러 개로 나누면 manifest 에
+      //   batch_index(판 k)·batch_total(N)·pieces(그 판의 조각 번호)가 온다. **스키마를 바꾸지 않고** 이 JSON 에 싣는다
+      //   (작업지시서·대기함이 이미 groups_json 을 읽는다 · 안정성 우선). 없거나 이상한 값이면 안 싣는다(종전과 같다).
+      const plate = parsePlateInfo(body)
       const groups = [{
         index: 0,
         name: 'design',
@@ -739,6 +744,7 @@ workbenchRouter.post('/intakes', async (c) => {
         thumbnail_hi_base64: body.thumb_hi_base64 ? String(body.thumb_hi_base64) : undefined,
         width_mm: w != null ? Math.round(w * 10) : undefined,
         height_mm: h != null ? Math.round(h * 10) : undefined,
+        ...plate,
       }]
       let groupsJson: string
       try {
@@ -891,6 +897,8 @@ workbenchRouter.get('/intakes', async (c) => {
     if (lite) {
       const { results } = await c.env.DB.prepare(`
         SELECT designer_intakes.*, it.item_name,
+               CASE WHEN json_valid(ar.groups_json) THEN json_extract(ar.groups_json, '$[0].plate_index') END AS plate_index,
+               CASE WHEN json_valid(ar.groups_json) THEN json_extract(ar.groups_json, '$[0].plate_total') END AS plate_total,
                CASE WHEN ar.groups_json LIKE '%thumbnail_r2_key":"%'
                       OR ar.groups_json LIKE '%thumbnail_base64":"%' THEN 1 ELSE 0 END AS has_thumbnail
         FROM designer_intakes
@@ -906,7 +914,9 @@ workbenchRouter.get('/intakes', async (c) => {
     }
 
     const { results } = await c.env.DB.prepare(`
-      SELECT designer_intakes.*, ar.groups_json, it.item_name
+      SELECT designer_intakes.*, ar.groups_json, it.item_name,
+               CASE WHEN json_valid(ar.groups_json) THEN json_extract(ar.groups_json, '$[0].plate_index') END AS plate_index,
+               CASE WHEN json_valid(ar.groups_json) THEN json_extract(ar.groups_json, '$[0].plate_total') END AS plate_total
       FROM designer_intakes
       LEFT JOIN ai_analysis_requests ar ON ar.id = designer_intakes.ai_analysis_id
       LEFT JOIN items it ON it.id = designer_intakes.item_id

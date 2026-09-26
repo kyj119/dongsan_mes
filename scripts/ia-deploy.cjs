@@ -122,8 +122,15 @@ function uncommittedIa() {
 const GATES = ['audit:empty-catch', 'audit:jsx-ternary', 'audit:jsx-syntax', 'cut:bleed', 'cut:nest', 'cut:number', 'cut:rectfast', 'cut:hardengrid', 'cut:butt', 'cut:placement', 'cut:plate', 'cut:plate:baseline', 'cut:frame', 'cut:review', 'cut:trorder', 'cut:smoke', 'cut:shellsync', 'panel:smoke', 'cut:e2e']
 function runGates() {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'))
-  const list = GATES.filter((g) => pkg.scripts && pkg.scripts[g])
-  if (!list.length) { console.log(C.y('  게이트 없음 — package.json 에 해당 스크립트가 없다')); return true }
+  // 없는 게이트를 조용히 건너뛰지 않는다 — 스크립트 이름을 바꾸거나 지우면 배포 게이트가 소리 없이 빠진다
+  //   (§「게이트는 배포 경로에 물려야 존재한다」의 반대 방향 구멍, 2026-09-26 리뷰).
+  const missing = GATES.filter((g) => !(pkg.scripts && pkg.scripts[g]))
+  if (missing.length) {
+    console.error(C.r(`  게이트 누락 ${missing.length}건 — package.json 에 없다: ${missing.join(', ')}`))
+    console.error('  이름을 바꿨으면 GATES 도 같이 고친다(은퇴면 GATES 에서 빼고 사유를 주석으로 남긴다).')
+    return false
+  }
+  const list = GATES
   for (const g of list) {
     process.stdout.write(`  ${g} ... `)
     try {

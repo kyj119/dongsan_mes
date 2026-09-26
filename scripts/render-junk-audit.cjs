@@ -267,6 +267,13 @@ async function selftest() {
 
   console.log(`[render-junk] ${BASE} · ${WIDTH}px · ${targets.length}화면`);
 
+  // 못 잰 화면을 「쓰레기 0건」으로 세지 않는다 — 인증이 깨지면 전 화면이 /login 으로 튕겨도 OK 가 났다
+  const bounced = results.filter((r) => r.note === '로그인으로 튕김').map((r) => r.path);
+  if (bounced.length || rendered === 0) {
+    console.error(`[render-junk] 측정 불가 — 렌더 ${rendered}화면 · 로그인 튕김 ${bounced.length}화면${bounced.length ? ': ' + bounced.slice(0, 6).join(', ') : ''}`);
+    process.exit(2);
+  }
+
   if (UPDATE) {
     fs.writeFileSync(BASELINE, JSON.stringify({ base: BASE, width: WIDTH, known: current }, null, 2) + '\n');
     console.log(`[render-junk] 기준선 갱신 — ${Object.keys(current).length}건 고정`);

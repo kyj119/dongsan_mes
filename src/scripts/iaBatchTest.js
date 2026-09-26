@@ -1,11 +1,11 @@
 // IA 배치 테스트 페이지 스크립트
-let allResults = [];
-let currentFilter = 'all';
-let createdIds = [];
-let pollTimer = null;
+var allResults = [];
+var currentFilter = 'all';
+var createdIds = [];
+var pollTimer = null;
 
 // 헬퍼 서버 주소 (folder-scan-server.js)
-const SCAN_SERVER = 'http://' + window.location.hostname + ':3001';
+var SCAN_SERVER = 'http://' + window.location.hostname + ':3001';
 
 // ── 폴더 스캔 ──────────────────────────────────────────
 async function scanFolder() {

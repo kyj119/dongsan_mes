@@ -13,6 +13,8 @@ description: 프로덕션 배포 실행 + 자동 검증 체인 (빌드→타입�
 ```bash
 npx tsc --noEmit    # 타입체크
 npm run build       # 빌드
+npm run check:fn && npm run audit:jwt-decode && npm run audit:bind-limit && npm run audit:migration-number
+                    # CI·ship:gate 에 있는 정적 게이트 — 여기 없으면 로컬 deploy:prod 가 배포 **뒤에야** CI 에서 걸린다
 npm run test:calc   # 계산 규칙 값 대조 (deploy.yml 이 CI 에서 돌리는 것과 동일)
 npm run journey:gate  # 업무 여정 J0~J6(25단계) — 로컬 D1 스냅샷 위에서 사람처럼 밟는다(≈2.5분). 서버가 없으면 스스로 띄운다
 npm run test:local-e2e  # 서버가 필요한 게이트 4종(수정·삭제 대칭 / 출고 재고 / 자동차감 원장 / 출력→카드 매칭). journey 가 띄운 서버를 그대로 쓴다
@@ -106,7 +108,7 @@ npm run deploy:prod
 
 5. **표 열 잘림 감사 (UI·목록을 건드린 배포면 필수)**
    ```bash
-   npm run audit:table-clip    # prod 56화면·탭 포함, 새 잘림만 exit 1 (≈2분)
+   npm run audit:table-clip -- --base https://webapp-9i0.pages.dev   # ★--base 필수(기본=localhost — Phase 1 journey 가 남긴 :3000 을 재고 통과한다) · prod 56화면·탭 포함, 새 잘림만 exit 1 (≈2분)
    ```
    `.ds-table` 은 `table-layout:fixed` + `td{overflow:hidden}` 이라 **넘친 값이 경고 없이 사라진다** —
    응답은 200 이고 tsc·build·smoke·check:dom 이 전부 통과한다. 기준선(`scripts/table-clip-baseline.json`)에

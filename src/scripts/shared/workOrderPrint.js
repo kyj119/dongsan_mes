@@ -74,6 +74,11 @@ async function printWorkOrder(orderId) {
             + '.thumb { width: 240px; max-height: 240px; flex-shrink: 0; border: 1px solid #e5e7eb; border-radius: 6px; object-fit: contain; background: #fff; align-self: flex-start; }'
             // ★재단 패널 번호 그림 — 줄 아래 A4 폭 전체(번호로 판↔조각을 대조하는 그림이라 6.3cm 로는 번호가 안 읽힌다)
             + '.row-large { flex-wrap: wrap; }'
+            // ★재단 판(2026-09-26 「가」 안) — 한 장을 판 여러 개로 나눈 줄은 판 2부터 새 페이지(판 한 장 = 종이 한 장)
+            + '.row-break { break-before: page; page-break-before: always; }'
+            + '.plate-head { font-size: 15px; font-weight: 800; margin-bottom: 4px; }'
+            + '.plate-head .plate-badge { display: inline-block; background: #111; color: #fff; border-radius: 4px; padding: 1px 8px; margin-right: 6px; }'
+            + '.plate-pieces { font-size: 13px; color: #374151; margin: 2px 0 6px; line-height: 1.6; word-break: keep-all; }'
             + '.thumb-large { order: 9; flex: 0 0 100%; width: 100%; max-height: 170mm; border: 1px solid #e5e7eb; border-radius: 6px; object-fit: contain; background: #fff; }'
             + '.thumb-empty { width: 240px; height: 120px; flex-shrink: 0; border: 1px dashed #d1d5db; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #d1d5db; font-size: 34px; align-self: flex-start; }'
             + '.info-col { flex: 1; min-width: 0; }'
@@ -143,7 +148,8 @@ async function printWorkOrder(orderId) {
                 var unit = ln.unit || 'EA';
 
                 var large = !!(ln.thumbnail && ln.thumbnail_large);
-                html += '<div class="row' + (large ? ' row-large' : '') + '">';
+                var plate = (ln.plate_total > 1 && ln.plate_index >= 1) ? ln : null;
+                html += '<div class="row' + (large ? ' row-large' : '') + (plate && ln.plate_index > 1 ? ' row-break' : '') + '">';
 
                 // 시안 — 재단 패널 번호 그림은 줄 맨 아래에 크게(아래 .thumb-large), 나머지는 왼쪽 240px
                 if (large) html += '<img src="' + ln.thumbnail + '" class="thumb-large">';
@@ -153,6 +159,12 @@ async function printWorkOrder(orderId) {
 
                 // 지시
                 html += '<div class="info-col">';
+                if (plate) {
+                    // 판 머리 — 재단 현장이 판 위 꼬리표 번호와 대조하는 목록
+                    html += '<div class="plate-head"><span class="plate-badge">판 ' + plate.plate_index + ' / ' + plate.plate_total + '</span>'
+                        + (plate.piece_labels && plate.piece_labels.length ? '조각 ' + plate.piece_labels.length + '개' : '') + '</div>';
+                    if (plate.piece_labels && plate.piece_labels.length) html += '<div class="plate-pieces">' + plate.piece_labels.map(esc).join(' · ') + '</div>';
+                }
                 html += '<div class="title">#' + no + ' ' + esc(ln.item_name || '-') + '</div>';
                 html += '<div class="spec">' + (spec || '-') + ' &nbsp;/&nbsp; ' + qty + esc(unit) + '</div>';
                 if (ln.fabric) html += '<div class="fabric"><b>원단</b> ' + esc(ln.fabric) + '</div>';

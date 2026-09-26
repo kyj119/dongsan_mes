@@ -33,7 +33,7 @@ GitHub 이슈 번호·자연어 혼용 허용. 먼저 **작업을 파싱해 번�
 ```bash
 npm run ship:gate
 ```
-= `verify`(tsc+build) → `entity-audit` → `canary:write`(로컬 D1 write 회귀).
+= 목록 정본은 `package.json` 의 `ship:gate`(verify·check:fn·jwt-decode·bind-limit·entity-audit·test:calc·canary:write·journey:gate·test:local-e2e).
 **하나라도 비-0 종료 시 배포 중단.** 실패 항목 + 수정안 보고 후 정지. **절대 게이트 우회 금지.**
 > dom 참조 회귀·JS문법은 이미 per-edit 훅이 차단. 타입체크는 커밋 훅도 이중 차단.
 
@@ -41,9 +41,13 @@ npm run ship:gate
 
 **배포 전 워킹트리 가드 (필수)**: `deploy:prod`는 **워킹트리 전체를 빌드**한다 → 타세션 미커밋 변경이 의도치 않게 동반배포됨([[project-ship-pipeline]] — cardExpenses 동반배포 교훈).
 ```bash
-git status --short   # 미커밋·untracked 전수 확인
+git status --short   # 비어 있어야 한다 — 한 줄이라도 있으면 그게 prod 에 나간다
+git status -sb       # behind 0 이어야 한다
 ```
-- 나열된 변경이 **이번 /ship 작업분과 100% 일치하는지** 대조. 이번 작업이 건드리지 않은 파일(다른 세션 WIP·잔여 빌드물)이 보이면 **배포 중단 → 사용자에게 1줄 보고·확인** 후에만 진행. 임의 동반배포 금지.
+- **/deploy-verify Phase 3-A 와 같은 규칙이다**(이 스킬만 약하면 우회로가 된다):
+  - **dirty 면 배포하지 않는다** — 이번 작업분은 먼저 **커밋**, 남의 것이면 배포 중단 → 사용자에게 1줄 보고.
+  - **push FIRST** — `git pull --rebase origin main` → `git push` 를 배포보다 **먼저**. 배포가 앞서면 다른 세션이 구버전으로 되덮는다.
+  - behind 면 rebase 먼저.
 
 ```bash
 # 배포 직전 현재 라이브 배포 ID 기록 (롤백 대비)

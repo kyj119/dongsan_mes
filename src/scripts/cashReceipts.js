@@ -419,6 +419,6 @@ function calcTax() {
   document.getElementById('totalAmount').value = fmtMoneyInput(totalAmount);
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-  loadReceipts(1);
-});
+// SPA 전환 시 DOMContentLoaded 는 다시 발화하지 않는다 — readyState 가드 필수(approvals.js 와 같은 형태).
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function() { loadReceipts(1); });
+else loadReceipts(1);

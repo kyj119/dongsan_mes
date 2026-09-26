@@ -3,12 +3,12 @@
 // ============================================================
 
 // #335: XSS 방어 — 업로드 Excel 미리보기/대사 결과 HTML 이스케이프
-const esc = window.escapeHtml || function(s) { if (s === null || s === undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); };
+var esc = window.escapeHtml || function(s) { if (s === null || s === undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); };
 
-let currentImportType = null;
-let parsedData = [];
-let currentVerifyType = null;
-let migrationEntityId = parseInt(localStorage.getItem('entityId') || '1');
+var currentImportType = null;
+var parsedData = [];
+var currentVerifyType = null;
+var migrationEntityId = parseInt(localStorage.getItem('entityId') || '1');
 
 // 법인 선택 드롭다운 초기화
 (function initMigrationEntitySelect() {
@@ -57,7 +57,7 @@ window.onMigrationEntityChange = function() {
 })();
 
 // 이카운트 CSV 헤더 매핑 정의
-const HEADER_MAPS = {
+var HEADER_MAPS = {
   clients: {
     label: '거래처',
     fields: [
@@ -134,7 +134,7 @@ const HEADER_MAPS = {
 };
 
 // 헤더 자동 매칭 (이카운트 CSV 헤더 → 시스템 필드)
-let headerMapping = {};
+var headerMapping = {};
 
 function autoMapHeaders(csvHeaders, type) {
   const map = HEADER_MAPS[type];

@@ -27,6 +27,13 @@ const BLOCK = [
   ['git restore -- .', '★`--` 형태(구 규칙 미탐)'],
   ['git push origin main --force', '원격 강제 덮어쓰기'],
   ['Remove-Item -Recurse -Force dist', 'PowerShell 재귀 삭제'],
+  ['git push -f origin main', '★-f 짧은 철자(2026-09-26 미탐)'],
+  ['git push origin +main', '★+refspec 강제 push(미탐)'],
+  ['git push --mirror origin', '★--mirror(미탐)'],
+  ['rm --recursive dist', '★긴 옵션 재귀 삭제(미탐)'],
+  ['rmdir /s /q dist', '★cmd 재귀 삭제(미탐)'],
+  ['ri dist -r', '★PowerShell 별칭 재귀 삭제(미탐)'],
+  ['git branch --delete --force feat/x', '★긴 옵션 브랜치 강제 삭제(미탐)'],
 ];
 
 // 반드시 통과해야 하는 것 (오탐 명세)
@@ -45,6 +52,12 @@ const ALLOW = [
   ['git push origin main --force-with-lease', 'lease 있는 push 는 경고만'],
   ['git commit -m "fix: restore . handling"', '산문(커밋 메시지) 오탐 방지'],
   ['npm run branch:clean -- --check', '--apply 없는 점검 모드'],
+  ['git push origin session/x:main', '일반 push(-f·+ 없음)'],
+  ['git push -u origin feat/x', '-u 는 강제가 아니다'],
+  ['git push origin feat-fix', '브랜치명의 -f 글자는 옵션이 아니다'],
+  ['rmdir emptydir', '재귀 아닌 rmdir'],
+  ['git branch --delete feat/x', '강제 아닌 삭제'],
+  ['del dist\\tmp.js', '단일 파일 del'],
 ];
 
 let bad = 0;

@@ -220,7 +220,10 @@ export class BarobillSmsProvider {
     try {
       const results: SendItemResult[] = []
       for (const msg of params.messages) {
-        const raw = await barobillCall(this.config, 'SMS', 'SendMMSMessage', {
+        // 건별 격리 — 중간 한 건의 예외가 바깥 catch 로 가면 이미 나간 앞 수신자까지 「실패·결과 없음」으로 기록된다
+        let raw: string
+        try {
+          raw = await barobillCall(this.config, 'SMS', 'SendMMSMessage', {
           SenderID: this.config.senderId || '',   // 빈값 → -24005(사업자번호·아이디 불일치). 알림톡에서 겪은 동일 결함
           FromNumber: params.snd,
           ToName: msg.rcvnm || '',
@@ -230,7 +233,12 @@ export class BarobillSmsProvider {
           ImageFile: params.imageBase64,
           SendDT: params.sndDT || '',
           RefKey: '',
-        })
+          })
+        } catch (e) {
+          console.warn('[barobillSms] MMS send failed for one recipient:', e instanceof Error ? e.message : e)
+          results.push({ ok: false, receiptNum: '', code: 0 })
+          continue
+        }
         results.push(interpretReceipt(raw).results![0])
       }
       const ok = results.filter(r => r.ok)

@@ -21,12 +21,13 @@
 # 2) 그 폴더에서 새 세션 열기
 code "C:\Users\user\dongsan_mes-worktrees\<이름>"
 
-# 3) 작업 -> 커밋 -> 빌드/배포 (자기 worktree의 자기 dist만 빌드 = 격리 배포)
-npm run build ; npx tsc --noEmit ; npm run smoke
-npm run deploy:prod
-
-# 4) 통합 (feature 브랜치 -> main)
+# 3) 작업 -> 커밋 -> 통합 먼저 (push FIRST — 배포가 push 보다 앞서면 다른 세션이 구버전으로 되덮는다)
+git pull --rebase origin main
 git push origin session/<이름>:main      # 거부 시: git pull --rebase origin main 후 재시도
+
+# 4) 배포 = /deploy-verify (tsc·build·test:calc·journey·entity 게이트 → deploy:prod → smoke:prod)
+#    ⚠️ 손으로 `npm run deploy:prod` 를 부르면 이 게이트를 전부 건너뛴다.
+#    ⚠️ 배포 후 검증은 `npm run smoke:prod` — `npm run smoke` 는 기본 대상이 localhost 다.
 
 # 5) 병합 후 종료
 .\scripts\end-session.ps1 <이름> -DeleteBranch

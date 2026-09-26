@@ -194,7 +194,15 @@ auth.get('/entities', authMiddleware, async (c) => {
 // 법인 전환 (새 JWT 발급)
 auth.post('/switch-entity', authMiddleware, async (c) => {
   try {
-    const user = c.get('user')
+    const claims = c.get('user')
+    // /refresh 와 같은 규칙 — 새 8시간 토큰의 role·활성 여부는 제시된 JWT 가 아니라 DB 가 정한다.
+    //   (JWT 만 믿으면 비활성화·강등된 계정이 전환을 반복해 권한을 무기한 연장한다)
+    const user = await c.env.DB.prepare(
+      'SELECT id, username, COALESCE(job_role, role) AS role, is_coordinator FROM users WHERE id = ? AND is_active = 1'
+    ).bind(claims.id).first<{ id: number; username: string; role: string; is_coordinator: number | null }>()
+    if (!user) {
+      return c.json({ success: false, error: '계정이 비활성화되었거나 존재하지 않습니다' }, 401)
+    }
     const body = await c.req.json().catch(() => ({})) as { entity_id?: unknown }
     const raw = body.entity_id
 

@@ -6,6 +6,7 @@ import { autoDeductInventory } from '../utils/autoDeductInventory'
 import { entityFilter, cardEntityFilter } from '../utils/entityFilter'
 import { kstDate, kstDateOf } from '../utils/kstDate'
 import { printEventAt, printEventKstDay } from '../utils/printEventDay'
+import { syncOrderStatusFromCards } from './cards/lifecycle'
 
 const printEventsRouter = new Hono<HonoEnv>()
 
@@ -378,43 +379,9 @@ async function autoCheckCardItem(db: D1Database, cardId: number, orderItemId: nu
       // 주문 상태 동기화
       if (card.order_id) {
         try {
-          // ★출고 준비 전파(2026-09-14) — 정본 = `cards/lifecycle.ts:107` 의 같은 UPDATE.
-          //   여기가 그 로직을 복사해 오면서 **이 한 단계만 빠뜨렸다**: 웹에서 카드를 PRINT_DONE 으로
-          //   바꾸면 라인이 출고 준비로 서는데, 같은 전환이 **에이전트(LogWatcher) 경로**로 들어오면
-          //   서지 않았다. 그러면 `cards/queries.ts:954` 의 「카드 안 붙은 제작 라인」 판정에 계속 걸려
-          //   출력이 끝난 주문이 출고 단계에서 미완성으로 남는다. 게이트 = `test:print-match` A'.
-          await db.prepare(`
-            UPDATE order_items SET shipment_ready = 1
-            WHERE order_id = ?
-              AND COALESCE(shipment_ready, 0) = 0
-              AND id IN (SELECT ci.order_item_id FROM card_items ci JOIN cards c ON c.id = ci.card_id WHERE c.order_id = ? AND c.status = 'PRINT_DONE')
-          `).bind(card.order_id, card.order_id).run()
-          // syncOrderStatus는 cards.ts 내부 함수라 직접 호출 불가 → 동일 로직 적용
-          const { results: siblingCards } = await db.prepare(
-            "SELECT status FROM cards WHERE order_id = ? AND status != 'CANCELLED'"
-          ).bind(card.order_id).all<{ status: string }>()
-          const orderCheck = await db.prepare(
-            "SELECT status FROM orders WHERE id = ?"
-          ).bind(card.order_id).first<{ status: string }>()
-          const statuses = (siblingCards || []).map((sc) => sc.status)
-          const hasHold = statuses.some((s: string) => s === 'HOLD')
-          const nonHold = statuses.filter((s: string) => s !== 'HOLD')
-          let newOrderStatus = null
-          if (!hasHold && nonHold.length > 0 && nonHold.every((s: string) => s === 'PRINT_DONE')) {
-            newOrderStatus = 'PRINT_DONE'
-          } else if (nonHold.some((s: string) => s === 'PRINTING')) {
-            // CONFIRMED 상태에서 모든 카드가 PRINTING(실제 출력 미시작)이면 전이하지 않음
-            if (orderCheck?.status === 'CONFIRMED' && !statuses.some((s: string) => s === 'PRINT_DONE')) {
-              newOrderStatus = null
-            } else {
-              newOrderStatus = 'PRINTING'
-            }
-          }
-          if (newOrderStatus && newOrderStatus !== orderCheck?.status) {
-            await db.prepare(
-              'UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-            ).bind(newOrderStatus, card.order_id).run()
-          }
+          // 정본 헬퍼 호출 — 종전 손사본은 SHIPPED/CANCELLED/HOLD 스킵·`WHERE status=?` 가드·이력을 빠뜨려
+          //   출력 이벤트가 취소된 주문을 PRINT_DONE 으로 되살릴 수 있었다(출고 준비 전파는 헬퍼가 한다).
+          await syncOrderStatusFromCards(db, card.order_id)
         } catch (syncErr) { console.error(`[printEvents] order sync failed for order_id=${card.order_id}:`, syncErr) }
       }
     }

@@ -15,6 +15,7 @@ import { deductStockLinesOnShip } from '../../utils/stockShip'
 import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
 import { formatDeliveryTiming } from '../../utils/productionDeadline'   // 직배 배차 슬롯 표기
 import { resolveGroupByAiIndex, getThumbnailDataUri, isThumbRef, type AnalysisGroup } from '../../utils/thumbnailStore'
+import { plateOfGroup, type PlateInfo } from '../../utils/plateInfo'
 
 const ordersQueriesRouter = new Hono<HonoEnv>()
 ordersQueriesRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -631,10 +632,14 @@ ordersQueriesRouter.get('/:id/work-order', async (c) => {
 
     // R2 GET 은 병렬 — 직렬 await 면 라인 수만큼 왕복이 그대로 쌓인다(인쇄 대기 시간).
     const thumbByLine = new Map<number, string>()
+    // ★재단 판(2026-09-26 「가」 안) — 판 k/N·조각 번호. 인쇄가 판마다 새 페이지로 나누고 머리에 쓴다
+    const plateByLine = new Map<number, PlateInfo>()
     await Promise.all(lines.map(async (l) => {
       let ref: string | null = null
       if (l.ai_analysis_id) {
         const g = resolveGroupByAiIndex(groupsByAnalysis.get(l.ai_analysis_id), l.ai_group_index)
+        const pl = plateOfGroup(g)
+        if (pl) plateByLine.set(l.id, pl)
         if (g) {
           // 고해상도(@lg)가 있으면 그것을 쓴다 — 인쇄는 목록과 달리 픽셀이 필요하다.
           //   P2(에이전트 2장 export) 이전 데이터엔 hi 키가 없어 자동으로 sm 로 내려간다.
@@ -681,6 +686,9 @@ ordersQueriesRouter.get('/:id/work-order', async (c) => {
       production_line: lineByItem.get(l.id) || null,   // null = 제작 대상 아님(출고만)
       fabric: l.item_id ? formatFabricNames(fabricByItem.get(l.item_id) || []) : null,
       thumbnail: thumbByLine.get(l.id) || null,
+      plate_index: plateByLine.get(l.id)?.plate_index ?? null,
+      plate_total: plateByLine.get(l.id)?.plate_total ?? null,
+      piece_labels: plateByLine.get(l.id)?.piece_labels ?? [],
       thumbnail_large: largeByLine.has(l.id) && thumbByLine.has(l.id),
     }))
 

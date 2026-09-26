@@ -178,6 +178,8 @@
                     + '<div class="text-sm truncate">'
                     + stBadge
                     + (seq != null ? '<span class="inline-block px-1.5 rounded bg-gray-200 text-gray-700 text-xs mr-1">#' + seq + '</span>' : '')
+                    // ★재단 판(2026-09-26) — 한 장을 판 여러 개로 나눈 등록. 같은 판짜기의 판은 같은 주문에 함께 넣어야 한다
+                    + (r.plate_total > 1 ? '<span class="inline-block px-1.5 rounded bg-amber-100 text-amber-800 text-xs mr-1" title="한 장을 판 ' + r.plate_total + '개로 나눈 재단 — 같은 주문에 함께 넣으세요">판 ' + r.plate_index + '/' + r.plate_total + '</span>' : '')
                     + '<span class="font-medium">' + (r.width_cm != null ? r.width_cm : '?') + '×' + (r.height_cm != null ? r.height_cm : '?') + 'cm ×' + (r.qty || 1) + '</span>'
                     // 「조」로 입력된 건 = 파일 한 장이 낱개 두 장. 수량은 이미 **개**이고(패널이 환산),
                     //   여기 병기는 접수자가 눈으로 검산하라고 두는 것이다(0548 qty_unit).
@@ -707,6 +709,24 @@
                 }
             }
 
+            /**
+             * ★남은 판 경고(2026-09-26 작업지시서 「가」 안) — 한 장을 판 여러 개로 나눈 재단 등록은 판마다 대기물이 따로 생긴다.
+             *   한 판만 주문에 넣으면 나머지 판은 **대기함에 조용히 남고**, 재단기에 판 일부만 나간다(실물 누락).
+             *   불러온 **뒤**(ofTrayAfterPrefill 이 캐시에서 뺀 뒤) 같은 묶음(batch_key)이 캐시에 남았는지 본다 — 막지 않고 알린다
+             *   (다른 주문에 나눠 넣는 게 맞는 경우도 사람만 안다).
+             * @param pickedRows 방금 불러온 대기물 행들
+             */
+            function ofPlateLeftoverWarn(pickedRows) {
+                var keys = {};
+                (pickedRows || []).forEach(function(r) { if (r && r.plate_total > 1 && r.batch_key) keys[r.batch_key] = true; });
+                var left = [];
+                (_ofIntakeCache || []).forEach(function(r) {
+                    if (r && r.batch_key && keys[r.batch_key] && r.plate_total > 1) left.push('판 ' + r.plate_index + '/' + r.plate_total);
+                });
+                if (!left.length || typeof showToast !== 'function') return;
+                showToast('⚠ 같은 재단 판짜기의 ' + left.join(', ') + ' 이(가) 대기함에 남아 있습니다 — 같은 주문에 함께 넣어야 재단기에 판이 다 나갑니다.', 'warning', 8000);
+            }
+
             // 단건 추가 (행 클릭) — 기존 피커 동작 유지
             window.ofIntakePick = async function(intakeId) {
                 if (_ofTrayDone) return; // 처리됨 모드는 프리필 금지(복구 전용)
@@ -722,6 +742,7 @@
                 var pickMsg = '대기물을 라인으로 불러왔습니다. 품목·단가를 확인해 주세요.';
                 if (r.post_desc) pickMsg += ' (후가공: ' + r.post_desc + ' — 품목 선택 후 확정)';
                 if (typeof showToast === 'function') showToast(pickMsg, 'info');
+                ofPlateLeftoverWarn([r]);
             };
 
             // 선택 일괄 프리필 — 거래처 미선택 + 선택분이 단일 등록 거래처면 client_id 상속
@@ -924,6 +945,8 @@
                     }
                 }
                 if (ids.length > 0) ofTrayAfterPrefill(ids);
+                // 남은 판 경고는 불러오기 안내 토스트 **뒤**에 뜨게(아래 안내가 3초로 먼저 사라진다)
+                if (ids.length > 0) { var __picked = rows.filter(function(x) { return ids.indexOf(x.id) >= 0; }); setTimeout(function() { ofPlateLeftoverWarn(__picked); }, 400); }
                 if (typeof showToast === 'function') {
                     var bundleNote = bundles ? ' (동일 규격·마감 → 묶음 ' + bundles + '개 자동 구성)' : '';
                     if (failed.length === 0) {
