@@ -91,7 +91,7 @@ npm run deploy:prod
    ```bash
    git diff --name-only <직전배포sha>..HEAD -- src/routes | head
    # 결과가 있으면:
-   npm run smoke:write     # entity-99 격리·self-cleaning
+   SMOKE_URL=https://webapp-9i0.pages.dev npm run smoke:write     # entity-99 격리·self-cleaning. ★SMOKE_URL 필수 — 기본이 localhost 라 dev 서버가 떠 있으면 **남의 로컬을 재고 통과**한다(2026-09-26 두 번 그렇게 보고했다)
    ```
    읽기 스모크는 **200 만 본다** — 바인드 개수 불일치·FK drop 같은 쓰기 전용 회귀는 통과시킨다
    (`sales_rep_id` 0523 이 실제로 그랬다). `verify.yml` 의 카나리는 `on: pull_request` 라
