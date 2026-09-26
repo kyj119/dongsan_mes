@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-09-26T03:46:13+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-09-26T09:45:23+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,29 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **12** (+1) |
+| 🆕 new | **12** (변동없음) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **572** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 4 데이터 정합성 (2026-09-26T09:45):**
+> - **방법**: 세션 시작 시 로컬 `main`이 origin보다 stale(`0425936`) → `git fetch origin main` + `git checkout -B main origin/main`(`fbc633f`)으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area4 사이클 세션시작 HEAD `d67da50`)**: `git diff --stat d67da50..HEAD -- src/routes src/utils migrations index.tsx` **4파일**(`kakao.ts`·`orders/queries.ts`·`shipments.ts`·`shipmentNotice.ts`, 2커밋 `2cc2d56` 한진 알림톡 자동전환·`8506b3b` 재단 패널 번호 확대). 넷 다 이번 순환 Area5(09-24, IDOR/write-redirect 렌즈)·Area2(09-25, entity/N+1/dead-code 렌즈)가 이미 정독 — **Area4 고유 렌즈(집계증분·고아레코드·entity_id NULL·CHECK/NOT NULL·인덱스)로는 미검증** → 직접 재검토.
+> - **`kakao.ts`/`shipmentNotice.ts` 재검토(한진 알림톡, 2cc2d56)**: 신규 `kakao_send_logs` INSERT(SKIPPED 로그) 컬럼-값 positional 대조 — 14컬럼/14값 정합, `receiver_num`(NOT NULL)은 `shipment.mobile` 바인드인데 핸들러 상단(`kakao.ts:600` `if (!shipment.mobile) return 400`)이 이미 이 지점 도달 전 non-null 보장 → constraint throw 불가. `status='SKIPPED'` 리터럴은 이 테이블에 CHECK 제약 자체가 없음(`0103_kakao_alimtalk.sql` DEFAULT만) → 15회차 CHECK-literal 클래스 해당없음. `entity_id`는 `getEntityId(c)` 정상 스탬프(bare-0 아님, §④ getWriteEntityId 클래스 해당없음 — 이 테이블은 도메인 문서가 아니라 감사로그라 특정법인 비가시 리스크 없음). 집계 컬럼 증분(`+=`/`SET col=col+?`) 없음 — 순수 단건 INSERT. `applyTemplateApproval`/`isApprovedTemplateState`는 DB 미접근 순수 함수. 결함 0건.
+> - **`orders/queries.ts` 재검토(재단 패널 번호, 8506b3b)**: 신규 `designer_intakes` IN절 조회 — 80청크 루프 확인(Area2가 이미 bind-limit 렌즈로 확인한 것과 별개로 Area4 렌즈: `analysisIds`가 상위 entity-scoped 주문 라인에서 파생돼 추가 entity 필터 불요, orphan/집계 영향 없는 읽기전용 Set 구성). `thumbnail_large` 파생 필드도 순수 메모리 연산.
+> - **`shipments.ts` 재검토**: `loadTemplateBodies`(승인 템플릿만 필터)·`buildNotice`(`applyTemplateApproval` 적용)·`/pending-confirm`(`notice_sms_until_approved` 배지 필드 추가) 전부 읽기전용 재구성, DB write 없음. 집계·orphan 해당없음.
+> - **standing scan 1: `node scripts/sort-audit.cjs`** — P1 **0건**(변동없음), P2 4건 전부 기존 FP 유지.
+> - **standing scan 2: `npm run audit:migration-number`** — 같은 테이블 DDL 충돌 **0건**(변동없음). 중복 번호 쌍이 20→**25쌍**으로 증가(신규 5쌍: `0573`·`0574`·`0575`·`0621`·`0623` — 전부 서로 다른 테이블/컬럼, area-4-data-integrity.md §55회차가 이미 "재발 패턴·병렬 worktree 채번 충돌, 계속 증가함이 정상" 기정 — 재이슈 불요, 실충돌 0건 확인만 갱신).
+> - **standing scan 3: `npm run branch:clean`** — 삭제대상 0건(SKIP 1=main). **standing scan 4: `npm audit --omit=dev`** — 0건.
+> - **prod 데이터 직접조회 불가 재확인**: 이 세션도 egress 차단(`curl webapp-9i0.pages.dev` → CONNECT tunnel failed 403) — 고아 레코드·상태 불일치 등 실 데이터 기반 점검은 이번에도 불가(기존 제약 재확인, 신규 아님).
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신 8런 전부 `conclusion:success`(최종 HEAD `fbc633f`, run #2075).
+> - **open 이슈 재확인(open≠unfixed)**: `list_issues(state:OPEN,label:auto-improve)` **12**건(#663·#662·#661·#660·#659·#658·#656·#654·#650·#626·#617·#616, 변동없음) — Area4 라벨 신규 0건, churn 범위(4파일)와 겹치는 건 없음. 직전 Area4 자신의 발견(#662, GET /:id/invoice 역할필터 누락)은 이번 churn 밖이라 재확인 불요, owner 리뷰 대기 유지.
+> - **backlog↔GitHub 절대값 재동기화**: open **12**(변동없음) · done **572**(변동없음) · rejected **6**(변동없음).
+> - **🧬 SKILL 강화**: 없음 — area-4-data-integrity.md `line N` 잔여참조 재확인(0건, 이미 서술식). 이번 사이클은 기존 「churn-bridge 원칙」(다른 Area가 자기 렌즈로 이미 본 파일이라도 이 Area 고유 렌즈로는 미검증)을 정확히 재적용한 clean 회차 — 새 클래스 없음.
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 11건 → 이번 추가 후 12건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(churn 4파일 전부 clean), 자동수정 0건(고칠 결함 없음), done-sync: open 12(변동없음)·done 572(변동없음)·rejected 6(변동없음). 다음 순번 **Area 5**.
+>
 
 > **Area 3 UX/기능 감사 (2026-09-26T03:46):**
 > - **방법**: 세션 시작 시 로컬 `main`이 origin보다 stale(`0425936`) → `git fetch origin main` + `git checkout -B main origin/main`(`e40fd0a`)으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
