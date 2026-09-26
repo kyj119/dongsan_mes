@@ -212,3 +212,16 @@ button.danger { border-color: #7a4a4a; color: #e0b0b0; }
 .nestsum .warn { color: #fbbf24; font-weight: 700; }
 .nestsum .on { color: #9fd49f; }
 .advdiff { color: #fbbf24; font-weight: 600; font-size: 11px; margin-left: 4px; }
+
+/* ★결과창 요약·진행·수신 확인(2026-09-27) — 설명(.hint)이 아니라 상태다 */
+.out .osum { font-weight: 700; }
+.out .owarn { color: #fbbf24; margin-top: 2px; }
+.out .odet { margin-top: 4px; }
+.out .odet > summary { cursor: pointer; color: #9aa4b2; font-size: 11px; }
+.out .opre { white-space: pre-wrap; margin-top: 4px; }
+.nestprog { margin: 6px 0; font-size: 11px; color: #d6dbe4; }
+.nestprog b { color: #9fd49f; }
+.nestprog .warn { color: #fbbf24; }
+.regwatch { margin: 6px 0; padding: 4px 7px; font-size: 11px; border-left: 3px solid #5b8def; background: #232a36; color: #d6dbe4; }
+.regwatch.ok { border-left-color: #4caf50; }
+.regwatch.err { border-left-color: #f59e0b; color: #fbbf24; }

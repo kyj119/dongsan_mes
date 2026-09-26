@@ -2281,6 +2281,18 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('9p 배율(파일·저장)은 기억 목록에 없다', !!m && !/cutScale/.test(ids), ids)
 }
 
+// ── 사용감 2차(2026-09-27) — ③ 결과 요약은 ⚠ 줄을 접지 않는다 · ⑥ 적용 중엔 취소 불가 · ⑤ 수신 확인은 읽기 전용 ──
+{
+  const src = fs.readFileSync(CUT_MAIN, 'utf8')
+  const hostSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
+  ok('9q 결과 요약이 ⚠ 줄을 위로 올린다(격하 알림을 접지 않는다)', /warns\.push\(/.test(src) && /\^\\s\*⚠/.test(src))
+  ok('9q 결과 요약은 원문을 통째로 [자세히]에 싣는다', /pre\.textContent = msg/.test(src))
+  ok('9q 적용 단계에서는 취소 버튼이 잠긴다', /name === '적용'\) \{ cb\.disabled = true/.test(src))
+  ok('9q 호스트가 등록 폴더 이름을 돌려준다(names=)', /';names=' \+ names/.test(hostSrc))
+  const ing = (/function mesCut_ingestState[\s\S]*?\n\}/.exec(hostSrc) || [''])[0]
+  ok('9q 수신 확인은 읽기만 한다(쓰기·지우기 없음)', ing.length > 0 && !/\.(write|remove|open\(|create)/.test(ing), ing ? '' : '함수 없음')
+}
+
 // ── 결과 ────────────────────────────────────────────────────────────
 await browser.close()
 let pass = 0
