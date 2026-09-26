@@ -2272,6 +2272,15 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     'p0.png 실패에서 정작 아무것도 안 나온다')
 }
 
+// ── 판짜기 설정 기억(2026-09-26 「가」 안) — ★배율은 기억하면 안 된다(지난 파일의 1/10 이 다음 원본에 남으면 판 전체가 10배로 틀린다) ──
+{
+  const src = fs.readFileSync(CUT_MAIN, 'utf8')
+  const m = /var NEST_PREF_IDS = \[([^\]]*)\]/.exec(src)
+  const ids = m ? m[1] : ''
+  ok('9p 판짜기 설정을 기억한다(번호·도련 색 포함)', !!m && /nestNumber/.test(ids) && /bleedColor/.test(ids), m ? '' : 'NEST_PREF_IDS 없음')
+  ok('9p 배율(파일·저장)은 기억 목록에 없다', !!m && !/cutScale/.test(ids), ids)
+}
+
 // ── 결과 ────────────────────────────────────────────────────────────
 await browser.close()
 let pass = 0
