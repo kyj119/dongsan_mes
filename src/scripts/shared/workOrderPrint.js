@@ -146,10 +146,14 @@ async function printWorkOrder(orderId) {
         sections.forEach(function(sec) {
             var isSew = sec.line.indexOf('전사') >= 0 || sec.line.indexOf('태극기') >= 0;
             var isShipOnly = sec.line === SHIP_ONLY;
+            // ★판짜기 한 부에 들어간 판 줄은 **싣지 않는다**(2026-09-27 용준님 「개별 판 목록은 안 보여도 된다」) —
+            //   번호·규격·확인칸·후가공은 맨 앞 「판짜기 전체」 쪽이 다 싣는다. 판짜기가 아닌 줄(현수막 등)은 그대로.
+            var rows = sec.rows.filter(function(ln) { return !inBatch[ln.id]; });
+            if (!rows.length) return;   // 이 섹션이 전부 판짜기 판이면 섹션 머리도 없다
             html += '<div class="line-section' + (isShipOnly ? ' line-section-ship' : '') + '">■ ' + esc(sec.line)
-                 + '<span class="cnt">' + sec.rows.length + '건</span></div>';
+                 + '<span class="cnt">' + rows.length + '건</span></div>';
 
-            sec.rows.forEach(function(ln) {
+            rows.forEach(function(ln) {
                 no++;
                 var spec = (ln.width && ln.height) ? (Math.round(ln.width) + '×' + Math.round(ln.height) + 'cm') : '';
                 var qty = ln.quantity || 1;
