@@ -1220,7 +1220,8 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   // ★★맞붙임도 **판을 나눈다** (2026-09-04). 상한을 안 주면 길이 무한 전제로 판 1장만 나오고,
   //   큰 잡이 통째로 관문에 막혀 맞붙임이 한 번도 안 켜진다(칼선이 늘 두 줄).
   ok('3y 맞붙임이 길이 상한을 받는다',
-    /var maxH = Math\.max\(1, \(sheetHmm \|\| NEST_ROLL_MAX_MM\) - domboMm\(\) \* 2\);/.test(panelSrc))
+    // 0.100.0: 상한이 설정칸을 따르는 rollMaxMm() 로 — 성질(맞붙임도 길이 상한을 받는다)은 같다
+    /var maxH = Math\.max\(1, \(sheetHmm \|\| (?:NEST_ROLL_MAX_MM|rollMaxMm\(\))\) - domboMm\(\) \* 2\);/.test(panelSrc))
   ok('3y 공유 변을 판마다 따로 낸다', /segs: BT\.cutSegments\(r\.placements\)/.test(panelSrc)
     && /for \(var sN = 0; sN < packed\.length; sN\+\+\)/.test(panelSrc))
   ok('3y 패커가 정한 회전을 그대로 쓴다', /rot: p\.rot \|\| 0/.test(panelSrc))
@@ -1780,8 +1781,10 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     //   ★2026-09-04: 상한을 **판 전체 길이**로 통일하며 배치 영역에서 돔보를 뺀다. 지켜야 할 규칙은
     //   여전히 "toFileMm 을 씌우지 않는다" 이므로 그것도 함께 못박는다(domboMm 자체가 파일 좌표다).
     ok('3u 롤 상한은 파일 좌표 제약',
-      /rollMaxH: Math\.floor\(Math\.max\(10, NEST_ROLL_MAX_MM - domboMm\(\) \* 2\) \/ prep\.mmpp\)/.test(panelSrc2)
-      && !/toFileMm\(NEST_ROLL_MAX_MM/.test(panelSrc2))
+      /rollMaxH: Math\.floor\(Math\.max\(10, (?:NEST_ROLL_MAX_MM|rollMaxMm\(\)) - domboMm\(\) \* 2\) \/ prep\.mmpp\)/.test(panelSrc2)
+      && !/toFileMm\(NEST_ROLL_MAX_MM/.test(panelSrc2)
+      // 0.100.0: rollMaxMm 은 일러 한계를 **그대로**(파일 좌표) 쓰고, 사람 값(실물)만 toFileMm 한다
+      && /return u \? Math\.min\(NEST_ROLL_MAX_MM, toFileMm\(u\)\) : NEST_ROLL_MAX_MM;/.test(panelSrc2))
     // ★★판 길이 관문은 **배치 엔진 밖 한 곳**이어야 한다 (2026-09-04).
     //   상한이 엔진 안에만 있으면 새 배치 방식이 그것을 모른 채 통과한다 — 맞붙임이 정확히 그랬고,
     //   1050폭 1열에서 13,442mm 판이 나가 호스트가 PARM(1346458189) 으로 죽었다.
