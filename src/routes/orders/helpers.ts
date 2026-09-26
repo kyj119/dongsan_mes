@@ -146,7 +146,24 @@ export async function recalcOrderBillingGroups(db: D1Database, orderId: number):
   const { results: existing } = await db.prepare(
     `SELECT entity_id, billing_status, tax_invoice_id, supply_amount, tax_amount, billed_amount FROM order_billing_groups WHERE order_id = ?`
   ).bind(orderId).all<{ entity_id: number; billing_status: string | null; tax_invoice_id: number | null; supply_amount: number; tax_amount: number; billed_amount: number }>()
-  const frozen = (existing || []).filter(g => g.billing_status === 'BILLED' || g.billing_status === 'PAID' || g.tax_invoice_id != null)
+  // ★예외(2026-09-27): 미청구(NULL) 그룹이 가리키는 계산서 묶음(원본+수정발행)이 **죽었으면**(작성 중 없음 · 발행 순액 ≤ 0)
+  //   동결하지 않는다. 취소발행(수정 4) 뒤 청구를 되돌릴 때 링크를 일부러 남기는데(taxInvoices/helpers.resetBillingAfterFullCancel),
+  //   그 링크가 동결로 읽히면 주문을 고쳐도 그룹 금액이 옛 값에 묶여 재청구가 옛 금액으로 나간다.
+  //   이 그룹은 아래 DELETE 로 다시 만들어지며 그룹 링크는 사라지지만, 계산서 묶음은 tax_invoice_orders·order_id 로 여전히 주문에 닿는다.
+  const deadInvoiceIds = new Set<number>()
+  const unbilledLinked = [...new Set((existing || [])
+    .filter(g => g.tax_invoice_id != null && g.billing_status !== 'BILLED' && g.billing_status !== 'PAID')
+    .map(g => Number(g.tax_invoice_id)))]
+  for (const invId of unbilledLinked) {   // 한 주문의 그룹 수(=법인 수, 최대 3)만큼
+    const fam = await db.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM tax_invoices WHERE (id = ? OR original_invoice_id = ?) AND status IN ('DRAFT', 'ISSUING', 'FAILED')) AS pending,
+        (SELECT COALESCE(SUM(total_amount), 0) FROM tax_invoices WHERE (id = ? OR original_invoice_id = ?) AND status NOT IN ('CANCELLED', 'DRAFT', 'ISSUING', 'FAILED')) AS net
+    `).bind(invId, invId, invId, invId).first<{ pending: number; net: number }>()
+    if (Number(fam?.pending) === 0 && Number(fam?.net) <= 0) deadInvoiceIds.add(invId)
+  }
+  const frozen = (existing || []).filter(g => g.billing_status === 'BILLED' || g.billing_status === 'PAID'
+    || (g.tax_invoice_id != null && !deadInvoiceIds.has(Number(g.tax_invoice_id))))
   const frozenEntities = new Set(frozen.map(g => Number(g.entity_id)))
   // 동결분이 이미 가져간 세액/할인 = 주문 총액에서 차감 후 잔여를 미청구 그룹이 나눠 가짐.
   const frozenTax = frozen.reduce((s, g) => s + Math.round(Number(g.tax_amount) || 0), 0)
@@ -165,9 +182,12 @@ export async function recalcOrderBillingGroups(db: D1Database, orderId: number):
 
   // 미청구(NULL) 그룹만 제거(동결 그룹은 보존). 그 후 동결 안 된 법인만 현재 품목으로 재INSERT.
   // #395: tax_invoice_id 보유 그룹은 NULL-status여도 삭제 금지(계산서 연결 보존).
+  const deadIds = [...deadInvoiceIds]
   await db.prepare(
-    `DELETE FROM order_billing_groups WHERE order_id = ? AND tax_invoice_id IS NULL AND (billing_status IS NULL OR billing_status NOT IN ('BILLED','PAID'))`
-  ).bind(orderId).run()
+    `DELETE FROM order_billing_groups WHERE order_id = ?
+       AND (tax_invoice_id IS NULL${deadIds.length ? ` OR tax_invoice_id IN (${deadIds.map(() => '?').join(',')})` : ''})
+       AND (billing_status IS NULL OR billing_status NOT IN ('BILLED','PAID'))`
+  ).bind(orderId, ...deadIds).run()
 
   const unbilledRows = (rows || []).filter(r => !frozenEntities.has(Number(r.eid)))
   if (unbilledRows.length === 0) return

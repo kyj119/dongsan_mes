@@ -13,11 +13,17 @@
 //   금액 = 수량 × 단가. `auto_amount` 도 같이 맞춘다(에누리 판정이 자동값과 비교하므로).
 //
 // ── 안 건드리는 것 ──
-//   · 이미 청구된 주문(`billing_status` BILLED·PAID) — 발행된 계산서와 어긋난다.
+//   · 이미 청구된 주문(`billing_status` BILLED·PAID 또는 청구그룹 BILLED·PAID) — 발행된 계산서와 어긋난다.
+//     조용히 건너뛰지 않고 `skippedBilled` 로 돌려준다 — 호출부가 「박스 수는 저장됐지만 배송비는 안 바뀌었다」를 띄운다
+//     (주문 PUT 의 청구 후 금액 잠금과 같은 정책, 2026-09-27).
 //   · `fee_source` 가 NULL 인 라인 — 사람이 쓴 수량이 정본이다(현행 전량).
 //   · 취소된 출고(`status='CANCELLED'`) 는 묶음 판정에서 뺀다.
 //
-// 청구그룹 재계산은 **호출부**가 한다(`recalcOrderBillingGroups`) — 이 파일은 라인만 맞춘다.
+// 라인과 함께 **주문 헤더**(total·vat·discount·final)도 같은 batch 에서 다시 센다(2026-09-27).
+//   종전엔 라인 금액만 바뀌어 헤더 최종액·부가세가 옛 값으로 남았고, 청구그룹은 헤더 vat·discount 를 읽으므로 같이 틀렸다.
+//   규칙은 주문 PUT(orders/update.ts)과 같다 — 부가세 = 과세 라인(vat_included=1) 합 × 세율을 원 단위 반올림,
+//   에누리 clamp 0..(공급가+부가세), 최종 = 공급가 + 부가세 − 에누리.
+// 청구그룹 재계산은 **호출부**가 한다(`recalcOrderBillingGroups`).
 
 import type { D1Database } from '@cloudflare/workers-types'
 
@@ -25,6 +31,7 @@ export interface FeeSyncResult {
   orderIds: number[]        // 라인이 실제로 바뀐 주문
   primaryOrderId: number | null
   boxCount: number
+  skippedBilled: number[]   // 청구돼서 배송비를 못 맞춘 주문(박스 수와 라인 수량이 다르다)
 }
 
 /** 이 출고가 속한 묶음의 (대표 출고 id, 소속 주문 id 목록). 묶음이 아니면 자기 자신 1건. */
@@ -49,7 +56,7 @@ async function loadGroup(db: D1Database, shipmentId: number): Promise<{ primaryS
  * @returns 바뀐 주문 id 목록(호출부가 청구그룹을 재계산한다). 대상이 없으면 빈 배열.
  */
 export async function syncShippingFeeFromBoxes(db: D1Database, shipmentId: number): Promise<FeeSyncResult> {
-  const empty: FeeSyncResult = { orderIds: [], primaryOrderId: null, boxCount: 0 }
+  const empty: FeeSyncResult = { orderIds: [], primaryOrderId: null, boxCount: 0, skippedBilled: [] }
   const group = await loadGroup(db, shipmentId)
   if (!group) return empty
 
@@ -62,15 +69,18 @@ export async function syncShippingFeeFromBoxes(db: D1Database, shipmentId: numbe
 
   const primaryOrderId = Number(primary.order_id)
   const changed: number[] = []
+  const skippedBilled: number[] = []
   const stmts: D1PreparedStatement[] = []
+  let vatRate: number | null = null
 
   for (const o of group.orders) {
-    // 청구된 주문은 건드리지 않는다 — 발행된 계산서와 어긋난다.
     const ord = await db.prepare(
-      `SELECT billing_status FROM orders WHERE id = ?`
-    ).bind(o.orderId).first<{ billing_status: string | null }>()
+      `SELECT billing_status,
+              EXISTS(SELECT 1 FROM order_billing_groups g WHERE g.order_id = orders.id AND g.billing_status IN ('BILLED','PAID')) AS group_billed
+         FROM orders WHERE id = ?`
+    ).bind(o.orderId).first<{ billing_status: string | null; group_billed: number }>()
     if (!ord) continue
-    if (ord.billing_status === 'BILLED' || ord.billing_status === 'PAID') continue
+    const billed = ord.billing_status === 'BILLED' || ord.billing_status === 'PAID' || Number(ord.group_billed) === 1
 
     const qty = o.orderId === primaryOrderId ? boxCount : 0
     const { results: lines } = await db.prepare(
@@ -78,19 +88,44 @@ export async function syncShippingFeeFromBoxes(db: D1Database, shipmentId: numbe
          FROM order_items oi
         WHERE oi.order_id = ? AND oi.fee_source = 'SHIPMENT_BOX'`
     ).bind(o.orderId).all<{ id: number; quantity: number; unit_price: number }>()
-    for (const ln of results(lines)) {
-      if (Number(ln.quantity) === qty) continue   // 멱등 — 이미 맞다
+    const toFix = results(lines).filter((ln) => Number(ln.quantity) !== qty)   // 멱등 — 이미 맞으면 제외
+    if (!toFix.length) continue
+    // 청구된 주문은 건드리지 않는다 — 발행된 계산서와 어긋난다. 대신 알린다.
+    if (billed) { skippedBilled.push(o.orderId); continue }
+
+    for (const ln of toFix) {
       stmts.push(db.prepare(
         `UPDATE order_items
             SET quantity = ?, amount = ? * unit_price, auto_amount = ? * unit_price, updated_at = datetime('now')
           WHERE id = ?`
       ).bind(qty, qty, qty, ln.id))
-      if (!changed.includes(o.orderId)) changed.push(o.orderId)
     }
+    if (vatRate === null) {
+      const vs = await db.prepare(`SELECT setting_value FROM settings WHERE setting_key = 'vat_rate'`).first<{ setting_value: string }>()
+      const parsed = vs ? parseFloat(vs.setting_value) : NaN
+      vatRate = Number.isFinite(parsed) ? parsed : 0.10
+    }
+    // 헤더 ① 공급가·부가세 — 위 라인 UPDATE 뒤에 실행되므로(batch 순차) 새 라인 금액을 본다.
+    stmts.push(db.prepare(
+      `UPDATE orders SET
+          total_amount = (SELECT COALESCE(SUM(amount), 0) FROM order_items WHERE order_id = orders.id),
+          vat_amount = CAST(ROUND((SELECT COALESCE(SUM(CASE WHEN vat_included = 1 THEN amount ELSE 0 END), 0)
+                                     FROM order_items WHERE order_id = orders.id) * ?) AS INTEGER)
+        WHERE id = ?`
+    ).bind(vatRate, o.orderId))
+    // 헤더 ② 에누리 clamp·최종액 — ①의 새 값을 읽어야 하므로 별도 문장(같은 UPDATE 안에서는 옛 값이 보인다)
+    stmts.push(db.prepare(
+      `UPDATE orders SET
+          discount_amount = MIN(MAX(COALESCE(discount_amount, 0), 0), ROUND(total_amount) + vat_amount),
+          final_amount = ROUND(total_amount) + vat_amount - MIN(MAX(COALESCE(discount_amount, 0), 0), ROUND(total_amount) + vat_amount),
+          updated_at = datetime('now')
+        WHERE id = ?`
+    ).bind(o.orderId))
+    changed.push(o.orderId)
   }
 
   if (stmts.length) await db.batch(stmts)
-  return { orderIds: changed, primaryOrderId, boxCount }
+  return { orderIds: changed, primaryOrderId, boxCount, skippedBilled }
 }
 
 function results<T>(r: T[] | undefined | null): T[] {

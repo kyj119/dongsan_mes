@@ -230,6 +230,53 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
     const putDiscountAmount = Math.min(Math.max(Math.round(Number(orderData.discount_amount) || 0), 0), putGrossAmount)
     const finalAmount = putGrossAmount - putDiscountAmount
 
+    // ★회계반영(청구) 뒤에는 이 경로로 돈을 바꾸지 않는다(2026-09-27 결정).
+    //   청구그룹은 동결(BILLED/PAID)이라 주문 금액을 바꿔도 미수(=청구액 파생)는 옛 금액 그대로고,
+    //   감액 조정은 >0 만 받으므로 증액은 표현할 길조차 없었다. → 「회계반영 취소 → 수정 → 재반영」 한 길로 모은다.
+    //   판정 = ①주문 최종액(원 단위) ②청구된 법인 그룹에 속한 라인 금액 합(법인별). 배송지·비고 같은
+    //   돈과 무관한 수정은 둘 다 그대로라 통과한다. ②를 따로 보는 이유: 라인을 법인 사이로 옮기면 총액은 같아도
+    //   동결 그룹의 몫이 바뀐다.
+    //   ⚠️이관 주문 중 라인 vat_included=0 인데 헤더 부가세가 10% 인 건(D2)은 저장하면 부가세가 빠지므로 ①에 걸린다 —
+    //   조용히 부가세를 잃는 것보다 막히는 편이 맞다.
+    {
+      const { results: billedGroups } = await c.env.DB.prepare(
+        `SELECT entity_id FROM order_billing_groups WHERE order_id = ? AND billing_status IN ('BILLED','PAID')`
+      ).bind(id).all<{ entity_id: number }>()
+      const isBilled = (billedGroups || []).length > 0 || existingOrder.billing_status === 'BILLED'
+      if (isBilled) {
+        const moneyError = '회계반영된 주문의 금액은 바꿀 수 없습니다. 회계반영을 취소한 뒤 수정하세요.'
+        if (Math.abs(Number(finalAmount) - Number(existingOrder.final_amount || 0)) >= 1) {
+          return c.json({ success: false, error: moneyError, meta: { billed_locked: true, before: existingOrder.final_amount, after: finalAmount } }, 400)
+        }
+        const billedEntities = new Set((billedGroups || []).map(g => Number(g.entity_id) || orderEntityId))
+        if (billedEntities.size > 0) {
+          // 지금 저장된 라인의 법인별 금액(recalcOrderBillingGroups 와 같은 축: assigned_entity_id NULL → 주법인)
+          const { results: curByEnt } = await c.env.DB.prepare(`
+            SELECT COALESCE(assigned_entity_id, ?) AS eid, CAST(COALESCE(SUM(amount), 0) AS INTEGER) AS supply
+            FROM order_items WHERE order_id = ? GROUP BY COALESCE(assigned_entity_id, ?)
+          `).bind(orderEntityId, id, orderEntityId).all<{ eid: number; supply: number }>()
+          const before = new Map<number, number>()
+          for (const r of curByEnt || []) before.set(Number(r.eid), Number(r.supply) || 0)
+          // 새 payload 의 법인별 금액 — 아래 INSERT 와 같은 규칙(자식·PENDING=0, 담당법인=resolveAssignedEntity)
+          const lockMasters = await loadItemMasters(c.env.DB, (orderData.items as any[]).map((it: any) => it.item_id))
+          const after = new Map<number, number>()
+          for (const item of orderData.items as any[]) {
+            if (item.parent_client_id || item.price_status === 'PENDING') continue
+            const ax = resolveLineAxis(item, putPricingMethodMap, putMinSideMap)
+            const amt = computeLineAmount({ ...item, min_billing_side_cm: ax.minSide }, ax.pricingMethod).final
+            const master = item.item_id ? lockMasters.get(Number(item.item_id)) : undefined
+            const eid = Number(resolveAssignedEntity(item, master, orderEntityId)) || orderEntityId
+            after.set(eid, (after.get(eid) || 0) + amt)
+          }
+          for (const eid of billedEntities) {
+            if (Math.abs(Math.round(before.get(eid) || 0) - Math.round(after.get(eid) || 0)) >= 1) {
+              return c.json({ success: false, error: moneyError, meta: { billed_locked: true, entity_id: eid } }, 400)
+            }
+          }
+        }
+      }
+    }
+
     // Update order
     await c.env.DB.prepare(`
       UPDATE orders SET
@@ -293,9 +340,9 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       id
     ).run()
 
-    // split billing P3: balance 캐시 미사용. BILLED(청구 확정) 주문의 금액 수정은 미수금 파생에
-    // 자동 반영되지 않는다 — order_billing_groups 가 동결(발행된 세금계산서 보호)되므로.
-    // 청구 후 금액 변경분은 adjustment(감액/증액)로 처리한다.
+    // split billing P3: balance 캐시 미사용. order_billing_groups 가 동결(발행된 세금계산서 보호)이라
+    // BILLED 주문의 금액 수정은 미수 파생에 반영되지 않는다 → 위(최종액 계산 직후)에서 금액 변경 자체를 막는다(2026-09-27).
+    // 청구 후 금액을 바꾸려면 회계반영 취소 → 수정 → 재반영. 감액 조정(adjustment)은 에누리·클레임용이며 증액은 없다.
 
     // ── 카드 보존 판단을 order_items 삭제 전에 수행 ──
     // CONFIRMED 상태에서만 카드 삭제+재생성

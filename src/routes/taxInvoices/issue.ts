@@ -12,7 +12,7 @@ import { requireAccessOrRole, requireEditOrRole } from '../../middleware/permiss
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
 import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
-import { generateInvoiceNumber, getCompanySettings, issueTaxInvoice, createSplitInvoices, ordersAlreadyInvoiced } from './helpers'
+import { generateInvoiceNumber, getCompanySettings, issueTaxInvoice, createSplitInvoices, ordersAlreadyInvoiced, ordersWithDraftInvoice, DRAFT_INVOICE_EXISTS_ERROR } from './helpers'
 import { isCashRetailBrn } from '../../constants/arPolicy'
 import type { TaxInvoiceWithOrder, ClientRow, OrderWithClient } from './helpers'
 
@@ -359,6 +359,11 @@ taxInvoicesIssueRouter.post('/', requireEditOrRole('/tax-invoices', 'MANAGER'), 
       if (dupBundle.length > 0) {
         return c.json({ success: false, error: `이미 세금계산서가 발행된 주문이 포함되어 있습니다(${dupBundle.length}건). 먼저 기존 계산서를 취소하세요.`, data: { order_ids: dupBundle } }, 400)
       }
+      // 작성 중 계산서 중복 가드(2026-09-27) — ordersAlreadyInvoiced 는 DRAFT 를 안 센다
+      const draftBundle = await ordersWithDraftInvoice(c.env.DB, orderIds)
+      if (draftBundle.length > 0) {
+        return c.json({ success: false, error: DRAFT_INVOICE_EXISTS_ERROR, data: { order_ids: draftBundle } }, 400)
+      }
 
       // 단가 미정 주문 검증
       const pendingOrders = orders.filter((o: any) => o.has_pending_prices === 1)
@@ -429,6 +434,9 @@ taxInvoicesIssueRouter.post('/', requireEditOrRole('/tax-invoices', 'MANAGER'), 
     if ((await ordersAlreadyInvoiced(c.env.DB, [Number(body.order_id)])).length > 0) {
       return c.json({ success: false, error: '이미 세금계산서가 발행된 주문입니다. 먼저 기존 계산서를 취소하세요.' }, 400)
     }
+    if ((await ordersWithDraftInvoice(c.env.DB, [Number(body.order_id)])).length > 0) {
+      return c.json({ success: false, error: DRAFT_INVOICE_EXISTS_ERROR }, 400)
+    }
     // 묶음 경로와 같은 단가 미정 가드 — 없으면 0원 라인이 빠진 금액으로 계산서가 만들어진다(2026-09-26 실측)
     const pendingSingle = await c.env.DB.prepare(
       `SELECT 1 FROM order_items WHERE order_id = ? AND price_status = 'PENDING' LIMIT 1`
@@ -495,6 +503,8 @@ taxInvoicesIssueRouter.post('/:id/issue', requireEditOrRole('/tax-invoices', 'MA
 })
 
 // POST /:id/modify — 수정발행 (ISSUED/SENT 상태의 계산서에 대해 수정본 DRAFT 생성)
+// ★여기서는 DRAFT 만 만든다 — 취소발행(4)의 청구 되돌리기는 이 DRAFT 가 **발행되는 순간**
+//   issueTaxInvoice → resetBillingAfterFullCancel 에서 한다(2026-09-27). DRAFT 를 지우면 아무 일도 없어야 하므로.
 taxInvoicesIssueRouter.post('/:id/modify', requireEditOrRole('/tax-invoices', 'MANAGER'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))

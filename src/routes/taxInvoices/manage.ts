@@ -16,6 +16,20 @@ import { getTaxProvider } from './helpers'
 const taxInvoicesManageRouter = new Hono<HonoEnv>()
 taxInvoicesManageRouter.use('/*', authMiddleware, requireAccessOrRole('/tax-invoices', 'MANAGER'))
 
+// 계산서에 걸린 주문(연결 경로 셋: tax_invoices.order_id · tax_invoice_orders · order_billing_groups.tax_invoice_id)과 주문유형.
+//   직접발행(#310) 백업 주문(order_type='DIRECT_INVOICE')은 계산서 말고는 실체가 없어, 계산서 쪽 변경이 주문·청구그룹을 따라가야 한다.
+async function linkedOrdersOfInvoice(db: D1Database, invoiceId: number): Promise<Array<{ id: number; order_type: string | null }>> {
+  const { results } = await db.prepare(
+    `SELECT o.id, o.order_type FROM orders o
+     WHERE o.id IN (
+       SELECT order_id FROM tax_invoices WHERE id = ? AND order_id IS NOT NULL
+       UNION SELECT order_id FROM tax_invoice_orders WHERE tax_invoice_id = ?
+       UNION SELECT order_id FROM order_billing_groups WHERE tax_invoice_id = ?
+     )`
+  ).bind(invoiceId, invoiceId, invoiceId).all<{ id: number; order_type: string | null }>()
+  return results || []
+}
+
 // PATCH /:id — Update draft
 taxInvoicesManageRouter.patch('/:id', requireEditOrRole('/tax-invoices', 'MANAGER'), async (c) => {
   try {
@@ -47,6 +61,29 @@ taxInvoicesManageRouter.patch('/:id', requireEditOrRole('/tax-invoices', 'MANAGE
     }
     if (existing.status !== 'DRAFT') {
       return c.json({ success: false, error: '임시저장 상태의 세금계산서만 수정할 수 있습니다.' }, 400)
+    }
+
+    // 금액 변경은 주문 축이 정본이다(2026-09-27) — 주문에 연결된 작성본의 품목 금액을 여기서 바꾸면 계산서와 청구그룹(미수)이 갈린다.
+    //   · 일반 주문에 연결 → 합계(공급가·세액)가 바뀌는 품목 수정은 거절(품목명·규격 등 금액 무관 수정은 통과).
+    //   · 직접발행 백업 주문에만 연결 → 백업 주문·청구그룹을 새 합계로 같이 맞춘다(아래 batch).
+    let directBackupIds: number[] = []
+    let newSupply = 0, newTax = 0
+    if (body.items) {
+      newSupply = body.items.reduce((sum, it) => sum + (parseFloat(String(it.supply_amount)) || 0), 0)
+      newTax = body.items.reduce((sum, it) => sum + (parseFloat(String(it.tax_amount)) || 0), 0)
+      const linked = await linkedOrdersOfInvoice(c.env.DB, id)
+      if (linked.length > 0) {
+        const cur = await c.env.DB.prepare(
+          `SELECT supply_amount, tax_amount FROM tax_invoices WHERE id = ?`
+        ).bind(id).first<{ supply_amount: number; tax_amount: number }>()
+        const moneyChanged = Math.abs(newSupply - (Number(cur?.supply_amount) || 0)) >= 1
+          || Math.abs(newTax - (Number(cur?.tax_amount) || 0)) >= 1
+        const allDirect = linked.every(o => o.order_type === 'DIRECT_INVOICE')
+        if (moneyChanged && !allDirect) {
+          return c.json({ success: false, error: '주문에 연결된 계산서의 금액은 주문에서 수정하세요.' }, 400)
+        }
+        if (moneyChanged && allDirect) directBackupIds = linked.map(o => Number(o.id))
+      }
     }
 
     const setClauses: string[] = ['updated_at = CURRENT_TIMESTAMP']
@@ -90,18 +127,37 @@ taxInvoicesManageRouter.patch('/:id', requireEditOrRole('/tax-invoices', 'MANAGE
           )
         )
       }
+      // 헤더 합계도 같은 batch 에서 품목 합으로 다시 쓴다(서브쿼리 — batch 는 순서대로 실행되므로 위 INSERT 를 본다)
+      batchStmts.push(c.env.DB.prepare(
+        `UPDATE tax_invoices SET
+           supply_amount = COALESCE((SELECT SUM(supply_amount) FROM tax_invoice_items WHERE tax_invoice_id = ?), 0),
+           tax_amount = COALESCE((SELECT SUM(tax_amount) FROM tax_invoice_items WHERE tax_invoice_id = ?), 0),
+           total_amount = COALESCE((SELECT SUM(supply_amount) + SUM(tax_amount) FROM tax_invoice_items WHERE tax_invoice_id = ?), 0),
+           updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`
+      ).bind(id, id, id, id))
+      // 직접발행 백업 주문 동기화 — 헤더·라인·청구그룹(미수 파생 소스)을 계산서 새 합계로. 백업 주문은 보통 1건이다.
+      for (const oid of directBackupIds) {
+        const total = newSupply + newTax
+        batchStmts.push(
+          c.env.DB.prepare(
+            `UPDATE orders SET total_amount = ?, vat_amount = ?, final_amount = ?, billed_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+          ).bind(newSupply, newTax, total, total, oid),
+          c.env.DB.prepare(
+            `UPDATE order_billing_groups SET supply_amount = ?, tax_amount = ?, billed_amount = ? WHERE order_id = ?`
+          ).bind(newSupply, newTax, total, oid),
+          c.env.DB.prepare(`DELETE FROM order_items WHERE order_id = ?`).bind(oid),
+        )
+        body.items.forEach((it, i) => {
+          batchStmts.push(c.env.DB.prepare(`
+            INSERT INTO order_items (
+              order_id, item_name, quantity, unit, unit_price, amount, vat_included, sort_order, created_at, updated_at
+            ) VALUES (?, ?, ?, 'EA', ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `).bind(oid, it.item_name, it.quantity, parseFloat(String(it.unit_price)) || 0,
+            parseFloat(String(it.supply_amount)) || 0, (parseFloat(String(it.tax_amount)) || 0) > 0 ? 1 : 0, it.sort_order ?? i))
+        })
+      }
       await c.env.DB.batch(batchStmts)
-
-      // Recalculate header totals from items
-      const totals = await c.env.DB.prepare(
-        'SELECT SUM(supply_amount) as supply, SUM(tax_amount) as tax FROM tax_invoice_items WHERE tax_invoice_id = ?'
-      ).bind(id).first<{ supply: number | null; tax: number | null }>()
-
-      const supply = parseFloat(String(totals?.supply)) || 0
-      const tax = parseFloat(String(totals?.tax)) || 0
-      await c.env.DB.prepare(
-        'UPDATE tax_invoices SET supply_amount = ?, tax_amount = ?, total_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).bind(supply, tax, supply + tax, id).run()
     }
 
     const updated = await c.env.DB.prepare(`
@@ -138,7 +194,24 @@ taxInvoicesManageRouter.delete('/:id', requireEditOrRole('/tax-invoices', 'MANAG
       return c.json({ success: false, error: '임시저장 상태의 세금계산서만 삭제할 수 있습니다.' }, 400)
     }
 
+    // 직접발행(#310) 백업 주문은 만들 때부터 BILLED 다(issue.ts POST /direct) — 작성본만 지우면 계산서 없는 미수가 남는다
+    //   (유령 미수, 2026-09-26 리뷰). 로컬 취소 경로(issue.ts POST /:id/cancel)의 directBackup 처리와 같게 주문 취소 + 청구 해제.
+    //   순서: 연결 해제(tax_invoice_id = NULL) 전에 대상을 읽는다.
+    const directBackup = (await linkedOrdersOfInvoice(c.env.DB, id))
+      .filter(o => o.order_type === 'DIRECT_INVOICE').map(o => Number(o.id))
+    const delStmts: D1PreparedStatement[] = []
+    for (const oid of directBackup) {
+      delStmts.push(
+        c.env.DB.prepare(
+          `UPDATE order_billing_groups SET billing_status = NULL, billed_at = NULL, billed_by = NULL, accounting_date = NULL WHERE order_id = ?`
+        ).bind(oid),
+        c.env.DB.prepare(
+          `UPDATE orders SET status = 'CANCELLED', billing_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND order_type = 'DIRECT_INVOICE'`
+        ).bind(oid),
+      )
+    }
     await c.env.DB.batch([
+      ...delStmts,
       c.env.DB.prepare('DELETE FROM tax_invoice_items WHERE tax_invoice_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM tax_invoice_orders WHERE tax_invoice_id = ?').bind(id),
       // #386: split billing — DRAFT 삭제 시 청구그룹 링크 정리 (cancel 경로와 대칭, dangling 참조 방지)

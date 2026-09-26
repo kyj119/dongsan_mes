@@ -9,7 +9,7 @@ import type { HonoEnv } from '../../types/env'
 import { authMiddleware } from '../../middleware/auth'
 import { requireAccessOrRole, requireEditOrRole } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
-import { getCompanySettings, createSplitInvoices, ordersAlreadyInvoiced } from './helpers'
+import { getCompanySettings, createSplitInvoices, ordersAlreadyInvoiced, ordersWithDraftInvoice, DRAFT_INVOICE_EXISTS_ERROR, INVOICED_ORDER_IDS_SQL } from './helpers'
 import { kstYmd } from '../../utils/kstDate'
 import type { ClientRow, MonthlyEligibleRow } from './helpers'
 
@@ -130,6 +130,12 @@ taxInvoicesBatchRouter.post('/batch-create', requireEditOrRole('/tax-invoices', 
           failCount++
           continue
         }
+        // 작성 중(DRAFT) 계산서가 있는 주문에 또 만들지 않는다 — 둘 다 발행되면 이중 청구(2026-09-27)
+        if ((await ordersWithDraftInvoice(c.env.DB, orderIds)).length > 0) {
+          results.push({ client_id: group.client_id, client_name: client.client_name, success: false, error: DRAFT_INVOICE_EXISTS_ERROR })
+          failCount++
+          continue
+        }
         if (orders.some((o: any) => Number(o.has_pending_prices) === 1)) {
           results.push({ client_id: group.client_id, client_name: client.client_name, success: false, error: '단가 미정 품목이 있는 주문이 포함되어 있습니다.' })
           failCount++
@@ -235,11 +241,7 @@ taxInvoicesBatchRouter.post('/monthly-create', requireEditOrRole('/tax-invoices'
       WHERE c.invoice_method = 'MONTHLY'
         AND o.order_date >= ? AND o.order_date <= ?
         AND o.status IN ('CONFIRMED', 'PRINTING', 'PRINT_DONE', 'SHIPPED')
-        AND o.id NOT IN (
-          SELECT tio.order_id FROM tax_invoice_orders tio
-          JOIN tax_invoices ti ON tio.tax_invoice_id = ti.id
-          WHERE ti.status != 'CANCELLED'
-        )
+        AND o.id NOT IN (${INVOICED_ORDER_IDS_SQL})
         ${clientFilter}${efMonthly.clause}
       ORDER BY c.id, o.order_date, o.id
       `).bind(...params).all()

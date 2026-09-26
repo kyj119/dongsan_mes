@@ -7,7 +7,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { validatePayment, preparePaymentStatements } from '../lib/payments'
+import { validatePayment } from '../lib/payments'
 import { normalizeCounterpart, stripBankPrefix, isNonCounterpartName } from '../utils/counterpartName'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { excludeArExcludedClientsSql } from '../constants/arPolicy'
@@ -2073,9 +2073,8 @@ async function applyBankTransaction(
     created_by: user?.id ?? 1,
     entity_id: entityId, // 종전 미전달 → DEFAULT 1로 저장되던 법인 오기록 버그 수정
   }
-  let validated: { newBalance: number }
   try {
-    validated = await validatePayment(c.env.DB, paymentData)
+    await validatePayment(c.env.DB, paymentData)
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('Client not found')) {
       return { ok: false, error: '매칭된 거래처를 찾을 수 없습니다', status: 404 }
@@ -2085,20 +2084,42 @@ async function applyBankTransaction(
     }
     throw err
   }
-  // 원자적 클레임 우선 — validatePayment(검증 통과) 후, 돈 변동(payments INSERT) 전에 배타 소유권 확보.
-  //   검증을 클레임보다 먼저 두어, 검증 실패 시 tx가 미결제 상태로 클레임되어 남는 일이 없게 한다.
-  //   changes=0 이면 동시 요청 선점 → 409, 돈 변동 없음.
-  const claim = await db.prepare(`
-    UPDATE bank_transactions
-    SET match_status = 'APPLIED', matched_client_id = ?, matched_link_mode = 'CREATED',
-        matched_by = ?, matched_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND match_status != 'APPLIED'
-  `).bind(clientId, user?.id ?? 1, tx.id).run()
-  if (!claim.meta.changes) return { ok: false, error: '이미 처리된 은행거래입니다', status: 409 }
-  const payStmts = preparePaymentStatements(c.env.DB, paymentData, validated.newBalance)
-  const batchResults = await db.batch(payStmts)
-  const paymentId = Number(batchResults[0].meta.last_row_id)
-  await db.prepare('UPDATE bank_transactions SET matched_payment_id = ? WHERE id = ?').bind(paymentId, tx.id).run()
+  // 클레임 → 입금 INSERT → 링크를 **한 batch** 로(2026-09-27). 종전엔 셋이 따로 커밋돼, 중간에 실패하면
+  //   「APPLIED 인데 입금 없음」(미수 그대로·재적용 불가) 또는 「입금은 있는데 링크 없음」(적용취소가 입금을 못 지움)이 남았다.
+  //   검증(validatePayment)은 여전히 클레임보다 먼저다 — 검증 실패 시 tx 가 클레임된 채 남지 않게.
+  //   batch 안에서는 클레임의 changes 로 분기할 수 없으므로, INSERT·링크가 **클레임이 만든 상태**를 조건으로 삼는다:
+  //   (APPLIED · CREATED · 이 거래처 · 아직 입금 링크 없음). 동시 요청은 D1 이 batch 를 직렬로 커밋하므로 뒤 요청이 볼 때는
+  //   앞 요청의 링크가 이미 채워져 있어 INSERT 조건이 거짓 → 돈 변동 없음. 성패는 INSERT 의 changes 로 판정한다.
+  //   링크 id = 이 batch 에서 방금 넣은 행(reference_number = tx.id · 거래처 · MAX(id)) — returns.ts 의 서브쿼리 전례와 같은 방식.
+  //   INSERT 컬럼은 lib/payments.preparePaymentStatements 와 같다(조건부 INSERT…SELECT 라 그 헬퍼를 그대로 못 쓴다).
+  const applyResults = await db.batch([
+    db.prepare(`
+      UPDATE bank_transactions
+      SET match_status = 'APPLIED', matched_client_id = ?, matched_link_mode = 'CREATED',
+          matched_by = ?, matched_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND match_status != 'APPLIED'
+    `).bind(clientId, user?.id ?? 1, tx.id),
+    db.prepare(`
+      INSERT INTO payments (
+        client_id, payment_date, amount, payment_method,
+        reference_number, notes, created_by, entity_id
+      ) SELECT ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM bank_transactions WHERE id = ? AND match_status = 'APPLIED' AND matched_link_mode = 'CREATED'
+                      AND matched_client_id = ? AND matched_payment_id IS NULL)
+    `).bind(
+      paymentData.client_id, paymentData.payment_date, paymentData.amount, paymentData.payment_method,
+      paymentData.reference_number, paymentData.notes, paymentData.created_by, paymentData.entity_id,
+      tx.id, clientId
+    ),
+    db.prepare(`
+      UPDATE bank_transactions
+      SET matched_payment_id = (SELECT MAX(id) FROM payments WHERE reference_number = ? AND client_id = ?)
+      WHERE id = ? AND match_status = 'APPLIED' AND matched_link_mode = 'CREATED'
+        AND matched_client_id = ? AND matched_payment_id IS NULL
+    `).bind(String(tx.id), clientId, tx.id, clientId),
+  ])
+  if (!applyResults[1].meta.changes) return { ok: false, error: '이미 처리된 은행거래입니다', status: 409 }
+  const paymentId = Number(applyResults[1].meta.last_row_id)
 
   // 입금예정(cash_schedule) 소진은 여기서 찍지 않는다 — payments 행이 곧 근거이고,
   // 어느 예정이 얼마나 회수됐는지는 조회 시점에 FIFO 로 파생한다(utils/cashflowEngine §0).

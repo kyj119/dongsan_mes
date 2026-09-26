@@ -388,7 +388,7 @@ export interface IntegrityRow {
 export interface OrderAggRow { client_id: number; order_count: number; total_sales: number }
 export interface PaymentAggRow { client_id: number; total_payments: number }
 
-export interface MonthlyOrderRow { month: string; order_count: number; total_sales: number }
+export interface MonthlyOrderRow { month: string; order_count: number; total_sales: number; total_billed: number }
 export interface MonthlyPaymentRow { month: string; payment_count: number; total_payments: number }
 
 export interface NotifLinkRow { link: string }

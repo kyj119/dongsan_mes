@@ -1045,7 +1045,8 @@ async function loadMonthlySummary() {
             // Legend
             var legend = document.createElement('div');
             legend.className = 'flex gap-4 justify-center mt-2 text-xs text-gray-500';
-            legend.innerHTML = '<span><span class="inline-block w-3 h-3 bg-blue-400 rounded mr-1"></span>매출</span><span><span class="inline-block w-3 h-3 bg-green-400 rounded mr-1"></span>입금</span>';
+            // 막대 값 = 주문액(미청구 포함 주문 최종액). 청구액(매출)은 분석 탭 월말 마감 — 두 숫자를 같은 「매출」로 부르지 않는다(2026-09-27)
+            legend.innerHTML = '<span><span class="inline-block w-3 h-3 bg-blue-400 rounded mr-1"></span>주문액</span><span><span class="inline-block w-3 h-3 bg-green-400 rounded mr-1"></span>입금</span>';
             container.appendChild(legend);
         }
     } catch (e) {
@@ -1704,8 +1705,8 @@ async function deleteCollectionLog(id) {
 }
 
 // ===== 잔액 정합성 검사 =====
-var _integrityDiscrepancies = [];
-
+// 2026-09-27: 폐기된 잔액 캐시가 아니라 미수 파생 두 경로(목록 산식 ↔ 거래처별 파생)를 대사한다. 수정 버튼은 없다 —
+//   파생값이라 고쳐 쓸 캐시가 없고, 갈리면 코드(경로의 필터)를 고칠 일이다.
 async function runIntegrityCheck() {
     try {
         showToast('정합성 검사 중...', 'info');
@@ -1713,15 +1714,14 @@ async function runIntegrityCheck() {
         if (!res.data.success) { showToast(res.data.error || '검사 실패', 'error'); return; }
 
         var d = res.data.data;
-        _integrityDiscrepancies = d.discrepancies || [];
         var panel = document.getElementById('integrityPanel');
         var body = document.getElementById('integrityBody');
         var countEl = document.getElementById('integrityCount');
+        if (!panel || !body || !countEl) { console.warn('[ledger] #integrityPanel not found'); return; }
 
         if (d.discrepancy_count === 0) {
             panel.classList.add('hidden');
-            _integrityDiscrepancies = [];
-            showToast('전체 ' + d.total_checked + '개 거래처 잔액 정상', 'success');
+            showToast('전체 ' + d.total_checked + '개 거래처 미수 계산 경로 일치', 'success');
             return;
         }
 
@@ -1732,45 +1732,15 @@ async function runIntegrityCheck() {
             var sign = item.difference > 0 ? '+' : '';
             body.innerHTML += '<tr>'
                 + '<td class="text-left">' + escapeHtml(item.client_name || '') + '</td>'
-                + '<td class="text-right">' + Number(item.cached_balance).toLocaleString() + '</td>'
-                + '<td class="text-right font-bold">' + Number(item.calculated_balance).toLocaleString() + '</td>'
+                + '<td class="text-right">' + Number(item.list_balance).toLocaleString() + '</td>'
+                + '<td class="text-right font-bold">' + Number(item.derived_balance).toLocaleString() + '</td>'
                 + '<td class="text-right ' + diffColor + ' font-bold">' + sign + Number(item.difference).toLocaleString() + '</td>'
-                + '<td class="text-center"><button onclick="fixSingleIntegrity(' + item.client_id + ')" class="text-xs text-orange-600 hover:text-orange-800 underline">수정</button></td>'
                 + '</tr>';
         });
         panel.classList.remove('hidden');
-        showToast(d.total_checked + '개 검사, ' + d.discrepancy_count + '건 불일치 발견', 'warning');
+        showToast(d.total_checked + '개 검사, ' + d.discrepancy_count + '건 계산 경로 불일치', 'warning');
     } catch(e) {
         showToast('정합성 검사 오류: ' + (e.response?.data?.error || e.message), 'error');
-    }
-}
-
-async function fixSingleIntegrity(clientId) {
-    if (!(await showConfirm('이 거래처의 잔액을 재계산하시겠습니까?'))) return;
-    try {
-        var res = await axios.post('/api/ledger/recalculate/' + clientId, {});
-        if (res.data.success) {
-            showToast('잔액 수정 완료 (차이: ' + Number(res.data.data.difference).toLocaleString() + ')', 'success');
-            runIntegrityCheck();
-            loadSettlement();
-        }
-    } catch(e) {
-        showToast('수정 실패: ' + (e.response?.data?.error || e.message), 'error');
-    }
-}
-
-async function fixAllIntegrity() {
-    if (!(await showConfirm('불일치 거래처의 잔액을 모두 재계산하시겠습니까?'))) return;
-    try {
-        var ids = _integrityDiscrepancies.map(function(d) { return d.client_id; });
-        var res = await axios.post('/api/ledger/integrity-fix', { client_ids: ids });
-        if (res.data.success) {
-            showToast(res.data.message, 'success');
-            runIntegrityCheck();
-            loadSettlement();
-        }
-    } catch(e) {
-        showToast('일괄 수정 실패: ' + (e.response?.data?.error || e.message), 'error');
     }
 }
 
@@ -1856,39 +1826,32 @@ window.checkPurchaseIntegrity = function() {
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>검사 중...'; }
 
     axios.get('/api/ledger/purchase-integrity-check').then(function(r) {
-        var data = r.data.data || { mismatches: [], total_checked: 0 };
+        // 응답 키는 discrepancies 다(종전 화면은 없는 mismatches 를 읽어 결과가 늘 깨졌다) — 2026-09-27 경로 대사로 전환하며 맞춤
+        var data = r.data.data || { discrepancies: [], total_checked: 0 };
+        var mism = data.discrepancies || [];
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-shield-alt mr-1"></i>정합성 검사'; }
 
         var panel = document.getElementById('purchIntegrityPanel');
-        if (!data.mismatches.length) {
-            panel.innerHTML = '<div class="p-4 bg-green-50 text-green-700 rounded-lg text-sm"><i class="fas fa-check-circle mr-1"></i>모든 공급처(' + data.total_checked + '개)의 잔액이 정확합니다.</div>';
+        if (!panel) { console.warn('[ledger] #purchIntegrityPanel not found'); return; }
+        if (!mism.length) {
+            panel.innerHTML = '<div class="p-4 bg-green-50 text-green-700 rounded-lg text-sm"><i class="fas fa-check-circle mr-1"></i>모든 공급처(' + data.total_checked + '개)의 미지급 계산 경로가 일치합니다.</div>';
             return;
         }
 
-        var html = '<div class="p-3 bg-amber-50 text-amber-700 rounded-lg text-sm mb-3"><i class="fas fa-exclamation-triangle mr-1"></i>' + data.mismatches.length + '개 공급처에서 잔액 불일치가 발견되었습니다.</div>';
-        html += '<table class="w-full text-sm ds-table-striped"><thead><tr class="bg-gray-50 text-gray-600 text-xs font-semibold"><th class="p-2 text-left">공급처</th><th class="p-2 text-right">저장된 잔액</th><th class="p-2 text-right">계산된 잔액</th><th class="p-2 text-right">차이</th></tr></thead><tbody>';
-        data.mismatches.forEach(function(m) {
+        var html = '<div class="p-3 bg-amber-50 text-amber-700 rounded-lg text-sm mb-3"><i class="fas fa-exclamation-triangle mr-1"></i>' + mism.length + '개 공급처에서 미지급 계산 경로가 갈렸습니다.</div>';
+        html += '<table class="w-full text-sm ds-table-striped"><thead><tr class="bg-gray-50 text-gray-600 text-xs font-semibold"><th class="p-2 text-left">공급처</th><th class="p-2 text-right">목록 잔액</th><th class="p-2 text-right">공급처별 파생 잔액</th><th class="p-2 text-right">차이</th></tr></thead><tbody>';
+        mism.forEach(function(m) {
             html += '<tr class="border-b"><td class="p-2">' + escapeHtml(m.client_name) + '</td>';
-            html += '<td class="p-2 text-right">' + Number(m.cached_balance).toLocaleString() + '원</td>';
-            html += '<td class="p-2 text-right">' + Number(m.calculated_balance).toLocaleString() + '원</td>';
+            html += '<td class="p-2 text-right">' + Number(m.list_balance).toLocaleString() + '원</td>';
+            html += '<td class="p-2 text-right">' + Number(m.derived_balance).toLocaleString() + '원</td>';
             html += '<td class="p-2 text-right text-red-600 font-medium">' + Number(m.difference).toLocaleString() + '원</td></tr>';
         });
         html += '</tbody></table>';
-        html += '<div class="mt-3 text-right"><button onclick="fixPurchaseIntegrity()" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"><i class="fas fa-wrench mr-1"></i>일괄 수정</button></div>';
         panel.innerHTML = html;
     }).catch(function(e) {
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-shield-alt mr-1"></i>정합성 검사'; }
         showToast('정합성 검사 실패', 'error');
     });
-};
-
-window.fixPurchaseIntegrity = async function() {
-    if (!(await showConfirm('불일치 잔액을 모두 수정하시겠습니까?'))) return;
-    axios.post('/api/ledger/purchase-integrity-fix').then(function(r) {
-        showToast(r.data.data.fixed_count + '개 공급처 잔액이 수정되었습니다.', 'success');
-        loadPurchaseSettlement();
-        checkPurchaseIntegrity();
-    }).catch(function() { showToast('수정 실패', 'error'); });
 };
 
 // ===== Purchase CSV Export =====
