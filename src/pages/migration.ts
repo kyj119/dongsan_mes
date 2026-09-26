@@ -69,11 +69,7 @@ export function migrationPage(c: Context<HonoEnv>) {
               <span class="text-xs text-gray-600">세금계산서</span>
             </button>
             -->
-            <button onclick="selectImportType('opening_balances')" data-type="opening_balances"
-              class="import-type-btn border rounded-lg p-3 text-center hover:border-blue-400 transition-colors">
-              <i class="fas fa-balance-scale text-lg text-gray-400 mb-1 block"></i>
-              <span class="text-xs text-gray-600">기초잔액</span>
-            </button>
+            <!-- 기초잔액 적재는 막았다(2026-09-26) — clients.opening_balance 를 미수 계산이 읽지 않는다. 이월은 원장 조정 전표로. -->
           </div>
         </div>
 

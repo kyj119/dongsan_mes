@@ -447,9 +447,11 @@ async function approveRequest(id) {
   const comment = prompt('승인 의견 (선택):', '');
   if (comment === null) return;
   try {
-    await axios.post(`/api/approvals/${id}/approve`, { comment });
+    const res = await axios.post(`/api/approvals/${id}/approve`, { comment });
     document.getElementById('approval-detail-modal')?.remove();
-    showToast('승인 처리되었습니다.');
+    // 승인은 됐지만 후속 처리(여신 반영·카드 생성)가 실패했으면 그대로 알린다 — 조용히 넘기지 않는다
+    if (res.data && res.data.post_process_failed) showToast(res.data.warning || '승인은 완료됐지만 후속 처리에 실패했습니다.', 'warning');
+    else showToast('승인 처리되었습니다.');
     await Promise.all([loadPending(), loadMyRequests(), loadAllRequests()]);
     updateBadge();
   } catch (e) {

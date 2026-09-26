@@ -11,6 +11,7 @@ import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils
 import { putBase64ToR2, base64ToBytes } from '../utils/thumbnailStore'
 import { ROLE_SET } from '../types/roles'
 import { kstYmdCompact } from '../utils/kstDate'
+import { logActivity } from '../utils/activityLog'
 
 const approvals = new Hono<HonoEnv>()
 approvals.use('*', authMiddleware, requirePagePermission('/approvals'))
@@ -410,11 +411,26 @@ approvals.post('/:id/approve', async (c) => {
     await c.env.DB.batch(approveStmts)
 
     // Post-approval hook (외부 연쇄 — batch 범위 밖에서 실행)
+    //   ★실패를 삼키지 않는다(2026-09-26 결정) — 승인은 이미 확정이라 유지하되, 후속 처리(여신 승인 반영·
+    //   카드 생성) 실패는 응답과 활동 로그에 남긴다. 예전엔 console.error 뿐이라 「승인됐는데 카드가 없다」가 조용했다.
+    let postError: string | null = null
     if (isFinished) {
-      await handlePostApproval(c.env.DB, req)
+      postError = await handlePostApproval(c.env.DB, req)
+      if (postError) {
+        try {
+          await logActivity({
+            db: c.env.DB, userId: userId ?? null, userName: c.get('user')?.username ?? null,
+            action: 'APPROVAL_POST_FAILED', entityType: 'APPROVAL', entityId: Number(id),
+            entityLabel: `결재 후속 처리 실패 (${req.reference_type || '-'} #${req.reference_id || '-'})`,
+            details: JSON.stringify({ error: postError }), actorEntityId: getEntityId(c),
+          })
+        } catch (logErr) { console.warn('[approvals] 후속 실패 로그 기록 실패:', logErr) }
+      }
     }
 
-    return c.json({ success: true })
+    return c.json(postError
+      ? { success: true, post_process_failed: true, warning: `승인은 완료됐지만 후속 처리에 실패했습니다: ${postError}. 주문 화면에서 카드를 다시 생성하세요.` }
+      : { success: true })
   } catch (e) {
     console.error('Approvals error:', e)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -619,7 +635,8 @@ approvals.get('/badge/count', async (c) => {
 
 // ─── Post-approval hook ─────────────────────────────────────────────────────
 
-async function handlePostApproval(db: D1Database, req: any) {
+/** 후속 처리 — 실패하면 사유 문자열, 성공이면 null(호출부가 응답·로그에 남긴다). */
+async function handlePostApproval(db: D1Database, req: any): Promise<string | null> {
   // 연관 엔티티에 따른 후처리
   // ⚠️ 참조 행은 반드시 결재 요청과 같은 법인이어야 한다 — 생성 시점(POST /)에도 검증하지만
   //    그 검증 이전에 만들어진 요청이 남아 있으므로 실행 직전에 한 번 더 건다.
@@ -668,8 +685,10 @@ async function handlePostApproval(db: D1Database, req: any) {
     // 미수금 탕감: ledger 차감은 추후 연계 시 구현
     // 휴가/근태: leave_requests 상태 업데이트는 추후 연계 시 구현
     // 출고 보류 해제: shipment hold 해제는 추후 연계 시 구현
+    return null
   } catch (e) {
     console.error('Post-approval hook error:', e)
+    return e instanceof Error ? e.message : String(e)
   }
 }
 

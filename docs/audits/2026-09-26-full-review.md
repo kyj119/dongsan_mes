@@ -261,3 +261,15 @@ Workflow 15트랙(메타·게이트·도메인 코드·외부 축) → 중·고 
 | 61 | R2 수명주기 90일 | **prod R2 규칙 추가** `expire-daily-90d`(prefix `daily/`) · 고장 난 정리 단계 제거(에러 삼키고 완료 출력) · monthly/ 영구 |
 | 24 | 광고 문자 전송자 명칭 자동 | `withAdPrefix(body, sender)` = 「(광고)법인명」 · 제목도 · 법인명 = 발송 법인 `entities.name` · 수신거부 링크는 기존대로 |
 | 82·83 | 신용위험 점수 보류 | `/api/ai/credit-risk/*` 410(화면 소비자 0, calculate-all 이 틀린 등급을 써 넣던 경로 차단) · 위험 판단 = 여신한도 |
+
+## 결정 6차 (2026-09-26) — 결정 항목 마감
+
+| # | 결정 | 반영 |
+|---|---|---|
+| 84 | 결재 후속 처리 실패를 알리고 기록 | `handlePostApproval` 이 실패 사유 반환 → 응답 `post_process_failed`+`warning` · 활동 로그 `APPROVAL_POST_FAILED` · 화면 경고 토스트(승인은 유지) |
+| 87 | 이관 「기초잔액」 막기 | `/api/migration/opening-balances` 410(이월은 원장 조정 전표) · 이관 화면 버튼 제거 |
+| 65 | /ship 은 「배포」가 명시될 때만 | 트리거에서 「이거 처리해줘」 제외, 작업 나열이면 커밋·push 까지 · Workflow 는 opt-in |
+| 89 | auto-improve 자동 수정 = worktree · 마이그는 제안만 | SKILL.md 절차·허용 목록 수정 |
+| 68 | 계정 동기화 스킬(파랑 디자인) | **사용자 작업** — claude.ai 스킬 설정에서 `mes-ui-consistency` 동기화본 삭제(저장소 밖) |
+
+**결정 대기 0건.** 남은 것 = 확인 선행 3건(바로빌 WSDL #20·21·23) · 웹 밖 배포 축 4건(LogWatcher #42 · IA #43·81 · caps-worker #80) · 훅 cwd #75 · 보류 3건(지출결의·재주문·신용점수).

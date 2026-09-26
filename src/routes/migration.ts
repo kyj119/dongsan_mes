@@ -597,54 +597,13 @@ migrationRouter.post('/payments/import', async (c) => {
 // 기초잔액 설정
 // ============================================================
 migrationRouter.post('/opening-balances', async (c) => {
-  try {
-    const user = c.get('user')
-    const { balances } = await c.req.json() as { balances: { client_code: string, opening_balance: number }[] }
-    if (!Array.isArray(balances) || balances.length === 0) {
-      return c.json({ success: false, error: '데이터가 없습니다.' }, 400)
-    }
-
-    const db = c.env.DB
-    const logResult = await db.prepare(`
-      INSERT INTO migration_logs (migration_type, status, total_rows, started_at, created_by, entity_id)
-      VALUES ('opening_balances', 'RUNNING', ?, CURRENT_TIMESTAMP, ?, ?)
-    `).bind(balances.length, user?.id || null, getEntityId(c) || 1).run()
-    const logId = logResult.meta.last_row_id
-
-    let imported = 0, errorCount = 0
-    const errors: string[] = []
-
-    for (const row of balances) {
-      try {
-        const result = await db.prepare(`
-          UPDATE clients SET opening_balance = ?, updated_at = CURRENT_TIMESTAMP WHERE client_code = ?
-        `).bind(row.opening_balance || 0, row.client_code).run()
-
-        if (result.meta.changes > 0) imported++
-        else {
-          errorCount++
-          errors.push(`${row.client_code}: 거래처 없음`)
-        }
-      } catch (err) {
-        errorCount++
-        errors.push(`${row.client_code}: ${err instanceof Error ? err.message : '오류'}`)
-      }
-    }
-
-    await db.prepare(`
-      UPDATE migration_logs SET status = 'COMPLETED', imported_rows = ?, error_rows = ?,
-        errors_json = ?, completed_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).bind(imported, errorCount, JSON.stringify(errors.slice(0, 100)), logId).run()
-
-    return c.json({
-      success: true,
-      data: { total: balances.length, imported, errors: errorCount, error_details: errors.slice(0, 20) }
-    })
-  } catch (error) {
-    console.error('opening-balances error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
+  // ★막음(2026-09-26 결정): clients.opening_balance 는 미수 정본(deriveClientBalance·ar-ledger)이 **읽지 않는다** —
+  //   올려도 「imported N」만 뜨고 어디에도 반영되지 않았다(prod 적재 0건). 이월 잔액은 조정 전표(adjustments)로 넣는다.
+  //   (옛 적재 본문은 삭제 — 되살리려면 git 이력의 이 함수를 보되, 적재 대상을 adjustments 이월 전표로 바꿔야 한다)
+  return c.json({
+    success: false,
+    error: '기초잔액 적재는 사용하지 않습니다 — 미수 계산에 반영되지 않습니다. 이월 잔액은 원장의 조정(이월) 전표로 입력하세요.',
+  }, 410)
 })
 
 // ============================================================
