@@ -338,6 +338,31 @@ console.log('\n── 9 비대칭 도련 (전사 축, 2026-09-18) ──')
     String(px(d, ix0 + 3, 4 + 4 - 1)[3]))
 }
 
+console.log('\n── 12 도련 색 규칙(insetFor) — 얇은·두꺼운 테두리선 (2026-09-26 원격 실측: 해상도에 따라 흰/검정이 우연히 갈렸다) ──')
+{
+  const { insetFor } = mod.exports
+  ok('insetFor 가 있다', typeof insetFor === 'function')
+  if (typeof insetFor === 'function') {
+    // 흰 바탕 조각(40×30) + 바깥 테두리선(두께 bw px, 검정). 도련 g=6 — 왼쪽 링 한가운데 색을 본다
+    const frame = (bw) => make(52, 42, (x, y) => (x >= 6 && x < 46 && y >= 6 && y < 36)
+      ? ((x < 6 + bw || x >= 46 - bw || y < 6 + bw || y >= 36 - bw) ? [0, 0, 0] : [255, 255, 255]) : null)
+    const ring = (img, o) => { const r = repeatLastPixel(img, 6, o); return px(r, 6 + 6 - 3, 21 + 6).slice(0, 3).join() }
+    const run = (bw, rule) => { const i = insetFor(rule); return ring(frame(bw), { srcInsetPx: i.srcInsetPx, srcFixedPx: i.srcFixedPx }) }
+    const BLK = '0,0,0', WHT = '255,255,255'
+    for (const bw of [1, 3]) {
+      ok(`자동·사진 없음 — 테두리 ${bw}px → 검정(가장자리 그대로)`, run(bw, { mode: 'auto', photo: false, mmpp: 0.5 }) === BLK, run(bw, { mode: 'auto', photo: false, mmpp: 0.5 }))
+      ok(`가장자리 그대로 — 테두리 ${bw}px → 검정`, run(bw, { mode: 'edge', mmpp: 0.5 }) === BLK)
+      ok(`테두리 건너뛰기 2mm(0.5mm/px=4px) — 테두리 ${bw}px → 흰색`, run(bw, { mode: 'skip', skipMm: 2, mmpp: 0.5 }) === WHT, run(bw, { mode: 'skip', skipMm: 2, mmpp: 0.5 }))
+    }
+    // 건너뛰기는 **mm 두께**라 해상도가 바뀌어도 같은 테두리를 건너뛴다(종전 2px 고정은 해상도에 따라 갈렸다)
+    ok('건너뛰기 깊이는 mm 기준 — 0.75mm/px 3px · 1.5mm/px 1px(2mm 반올림)', insetFor({ mode: 'skip', skipMm: 2, mmpp: 0.75 }).srcFixedPx === 3 && insetFor({ mode: 'skip', skipMm: 2, mmpp: 1.5 }).srcFixedPx === 1)
+    ok('자동·사진 있음 → 종전 2px(소프트 에지)', insetFor({ mode: 'auto', photo: true }).srcInsetPx === 2 && insetFor({ mode: 'auto', photo: true }).why === 'photo')
+    ok('사각 조각은 자동에서도 가장자리 그대로(0.94.0 유지)', insetFor({ mode: 'auto', rect: true, photo: true }).srcInsetPx === 0)
+    // 고정 깊이 옵션이 없을 때(기존 호출)는 동작 불변 — 1px 테두리를 걸음이 건너뛰어 흰색(종전 결함 재현)
+    ok('기존 호출(srcInsetPx 2) 동작 불변 — 1px 테두리는 흰색', ring(frame(1), { srcInsetPx: 2 }) === WHT)
+  }
+}
+
 console.log(`\n── 판정 ──`)
 if (fails) { console.log(`  ❌ ${fails}건 실패`); process.exit(1) }
 console.log('  ✅ 전 항목 통과 (링 색 보존·내부 선 차단·위치별 색·오목 홈·성능·반투명 가장자리·소프트 에지·겹침 분할·비대칭)')

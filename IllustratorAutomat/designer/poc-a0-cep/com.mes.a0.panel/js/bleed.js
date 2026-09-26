@@ -73,6 +73,11 @@
     opt = opt || {};
     var aMin = opt.alphaMin;
     var inset = (typeof opt.srcInsetPx === 'number') ? Math.max(0, Math.round(opt.srcInsetPx)) : 2;
+    // ★고정 깊이(2026-09-26 「테두리 건너뛰기」) — 안정점을 찾지 않고 **정확히 이 깊이의 픽셀**을 쓴다.
+    //   안정점 걸음은 두꺼운 테두리를 「안정」으로 보고 그 색을 쓰므로 「테두리 두께만큼 건너뛴다」가 성립하지 않는다.
+    //   주면 inset 은 무시한다. 그 깊이가 캔버스 밖·투명이면 최외곽 그대로(조각이 그보다 얇은 곳).
+    var fixedD = (typeof opt.srcFixedPx === 'number' && opt.srcFixedPx > 0) ? Math.round(opt.srcFixedPx) : 0;
+    if (fixedD) inset = 0;
 
     // ★growPx 는 숫자(사방 같음) 또는 {t,r,b,l}(변마다 다름)이다 — 2026-09-18 전사 축에서 필요해졌다.
     //   가로등배너는 좌우 23.25 · 밴드 쪽 0 · 반대쪽 30.48 처럼 **비대칭**이라 단일 값으로 표현할 수 없다.
@@ -171,7 +176,14 @@
         // ★공급원 안정점 탐색 — 최외곽이 블렌드(AA·스무딩·소프트 에지)면 색이 안정되는
         //   첫 안쪽 픽셀을 쓴다(위 주석). 안정점이 없으면 최외곽 유지 = 종전 동작.
         //   TOL2 = 채널당 ±8 (8²×3 = 192) — 사진 노이즈는 안정, 블렌드 계단은 불안정으로 갈린다.
-        if (inset > 0) {
+        if (fixedD) {
+          var fl = Math.sqrt(a * a + b * b) || 1;
+          var fx = sx - Math.round(a / fl * fixedD), fy = sy - Math.round(b / fl * fixedD);
+          if (fx >= 0 && fy >= 0 && fx < NW && fy < NH) {
+            var jf = (fy * NW + fx) * 4;
+            if (out[jf + 3] >= aMin) j = jf;
+          }
+        } else if (inset > 0) {
           var dlen = Math.sqrt(a * a + b * b) || 1;
           var ux = a / dlen, uy = b / dlen;
           var prev = j, lastCx = sx, lastCy = sy;
@@ -216,7 +228,27 @@
     return top / W >= 0.95 && bot / W >= 0.95 && lef / H >= 0.95 && rig / H >= 0.95;
   }
 
-  var api = { repeatLastPixel: repeatLastPixel, isRectLike: isRectLike };
+  /**
+   * ★도련 색 규칙 — 가장자리 색을 **어디서** 뽑을지(`srcInsetPx`) 정한다 (2026-09-26 용준님 「도련 색 선택 · 기본 자동」).
+   *   종전: 사각이면 0(그대로) · 아니면 **2px 고정**(흐린 경계 건너뛰기). 2px 가 픽셀 기준이라 굽기 해상도에 따라
+   *   얇은 테두리선을 건너뛰기도 하고 못 건너뛰기도 했다 — 0.75mm/px 에서 1.5mm 검정 테두리가 흰 도련 + 모서리 계단이 됐고
+   *   1.5mm/px 에서는 검정으로 나왔다(같은 파일 원격 실측). 즉 결과가 **해상도에 따라 우연히** 갈렸다.
+   *   · auto(기본) — 사진 없는 조각 = 가장자리 **그대로**(흐림 끔으로 굽는 벡터는 흐린 경계가 없다) · 사진 있는 조각 = 종전 2px(소프트 에지)
+   *   · edge — 모든 조각 가장자리 그대로(테두리선이 도련으로 이어진다)
+   *   · skip — 테두리선을 **mm 두께**(skipMm, 기본 2)까지 건너뛰고 안쪽 색(흰 도련). 해상도가 바뀌어도 같은 두께
+   * @param o {mode, rect, photo, mmpp(mm/px), skipMm}  @returns {srcInsetPx, why}  why = 'edge'|'photo'|'skip'
+   */
+  function insetFor(o) {
+    var mode = o.mode || 'auto';
+    if (mode === 'skip') {
+      var mm = (o.skipMm > 0) ? o.skipMm : 2;
+      return { srcInsetPx: 0, srcFixedPx: Math.max(1, Math.round(mm / (o.mmpp > 0 ? o.mmpp : 1))), why: 'skip' };
+    }
+    if (mode === 'edge' || o.rect) return { srcInsetPx: 0, why: 'edge' };
+    return o.photo ? { srcInsetPx: 2, why: 'photo' } : { srcInsetPx: 0, why: 'edge' };
+  }
+
+  var api = { repeatLastPixel: repeatLastPixel, isRectLike: isRectLike, insetFor: insetFor };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;   // Node 하네스
   root.MesCutBleed = api;                                                      // 패널
 })(typeof window !== 'undefined' ? window : globalThis);

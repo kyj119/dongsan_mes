@@ -445,6 +445,13 @@
           <option value="region">단색/가장자리</option>
           <option value="scale">사본 확대</option>
         </select>
+        <!-- ★도련 색(2026-09-26) — 가장자리 색을 어디서 뽑을지. 정본 js/bleed.js insetFor · 게이트 cut:bleed §12 -->
+        <label for="bleedColor" class="l2">색</label>
+        <select id="bleedColor" title="자동 = 사진 없는 조각은 가장자리 색 그대로(테두리선이 도련으로 이어짐) · 사진 든 조각은 흐린 경계를 건너뛴 안쪽 색&#10;가장자리 그대로 = 모든 조각 가장자리 색&#10;테두리 건너뛰기 = 가장자리 2mm 까지의 선은 무시하고 안쪽 색(흰 도련)">
+          <option value="auto" selected>자동</option>
+          <option value="edge">가장자리 그대로</option>
+          <option value="skip">테두리 건너뛰기</option>
+        </select>
       </div>
       <div class="hint" id="nestBleedHint">
         <b>간격 ≥ 도련×2</b> 라야 옆 조각 도련과 안 겹침 — 모자라면 <b>도련을 간격의 절반까지 줄이고</b> 알림(하한 1.5mm).
