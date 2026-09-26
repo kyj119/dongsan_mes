@@ -445,7 +445,21 @@ leavesRouter.post('/accrual/yearly', requireRole('ADMIN'), async (c) => {
     // #416: 직원별 순차 INSERT 2N회(N+1 write) → stmt 누적 후 DB.batch. /grant(sick #321)와 동일 정책(all-or-nothing).
     const stmts: any[] = []
     for (const emp of employees) {
-      const annual = calcAnnualEntitlement(emp.hire_date, today)
+      let annual = calcAnnualEntitlement(emp.hire_date, today)
+      let reason = '연간 연차 자동 부여 (근로기준법)'
+      // ★비례연차(2026-09-26 결정, 회계연도 기준): 입사 **이듬해** 1/1 에 15 × (입사연도 재직일수 / 365).
+      //   근속 1년 미만이라 위 산식은 0 이지만, 회계연도로 운영하면 이 해를 비워 두면 입사일 기준보다 불리해진다.
+      //   월차(입사 1년 전까지 매월 1일)는 별도로 계속 쌓인다. 소수 첫째 자리 반올림(반차 단위 운용).
+      if (annual <= 0) {
+        const hy = Number(String(emp.hire_date).slice(0, 4))
+        const hm = Number(String(emp.hire_date).slice(5, 7))
+        const hd = Number(String(emp.hire_date).slice(8, 10))
+        if (hy === currentYear - 1 && hm >= 1 && hd >= 1) {
+          const daysWorked = (Date.UTC(hy, 11, 31) - Date.UTC(hy, hm - 1, hd)) / 86400000 + 1
+          annual = Math.round((15 * daysWorked / 365) * 10) / 10
+          reason = `비례연차 (입사연도 재직 ${daysWorked}일 / 365 × 15)`
+        }
+      }
       if (annual <= 0) continue
 
       const currentAccrued = accruedMap.get(emp.id) || 0
@@ -464,8 +478,8 @@ leavesRouter.post('/accrual/yearly', requireRole('ADMIN'), async (c) => {
 
       stmts.push(c.env.DB.prepare(`
         INSERT INTO leave_accrual_logs (employee_id, year, accrual_type, days, reason, run_by, entity_id)
-        VALUES (?, ?, 'YEARLY', ?, '연간 연차 자동 부여 (근로기준법)', ?, ?)
-      `).bind(emp.id, currentYear, annual - currentAccrued, user?.id || null, emp.entity_id || 1))
+        VALUES (?, ?, 'YEARLY', ?, ?, ?, ?)
+      `).bind(emp.id, currentYear, annual - currentAccrued, reason, user?.id || null, emp.entity_id || 1))
       processed++
     }
 

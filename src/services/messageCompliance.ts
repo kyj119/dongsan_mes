@@ -83,9 +83,24 @@ export function findBannedWords(text: string, words: string[]): string[] {
 /** 광고 표기 접두 — 이미 붙어 있으면 중복 부착하지 않는다. */
 export const AD_PREFIX = '(광고)'
 
-export function withAdPrefix(body: string): string {
+/**
+ * 첫머리 「(광고)전송자 명칭」 — §50④ 는 (광고) 표기와 **전송자 명칭**을 함께 요구한다(2026-09-26 반영).
+ *   예전엔 (광고)만 붙여 명칭은 작성자 기억에 맡겼다. 본문이 이미 (광고)로 시작하면 명칭만 끼워 넣는다.
+ */
+export function withAdPrefix(body: string, senderName?: string): string {
   const t = (body || '').trimStart()
-  return t.startsWith(AD_PREFIX) ? t : `${AD_PREFIX} ${t}`
+  const name = (senderName || '').trim()
+  const head = name ? `${AD_PREFIX}${name}` : AD_PREFIX
+  if (t.startsWith(head)) return t
+  if (t.startsWith(AD_PREFIX)) return `${head} ${t.slice(AD_PREFIX.length).trimStart()}`
+  return `${head} ${t}`
+}
+
+/** 광고 전송자 명칭 = 발송 법인명(전체 모드면 법인 1). 비면 '동산기획'. */
+export async function getAdSenderName(db: D1Database, entityId: number): Promise<string> {
+  const row = await db.prepare('SELECT name FROM entities WHERE id = ?')
+    .bind(entityId > 0 ? entityId : 1).first<{ name: string }>().catch(() => null)
+  return (row?.name || '').trim() || '동산기획'
 }
 
 /**

@@ -25,7 +25,7 @@ import { MMS_IMAGE, barobillErrorMessage } from '../constants/barobillCodes'
 import { stripDataUri } from '../utils/thumbnailStore'
 import {
   normalizePhone, getOptedOutSet, getOrCreateUnsubToken, buildUnsubscribeUrl,
-  withAdPrefix, unsubscribeFooter, isNightTimeKst, parseSendDT, AD_PREFIX,
+  withAdPrefix, getAdSenderName, unsubscribeFooter, isNightTimeKst, parseSendDT, AD_PREFIX,
   getBannedWords,
 } from '../services/messageCompliance'
 import { checkBulkLimit } from '../services/messageBulkLimit'
@@ -218,12 +218,13 @@ messagesAdRouter.post('/preview', async (c) => {
 
     // 본문 미리보기(앞 3명) — 실제 발송과 동일하게 (광고) 접두 + 수신거부 문구를 붙여 보여준다.
     const sample = audience.sendable.slice(0, 3)
+    const senderName = await getAdSenderName(c.env.DB, getEntityId(c))
     let previews: Array<{ name: string; phone: string; body: string; unresolved: string[] }> = []
     if (sample.length > 0) {
       const varCtx = await buildBulkVarContext(c, sample)
       previews = sample.map(r => {
         const resolved = applyVars(content.body, varCtx.varsFor(r))
-        const demo = withAdPrefix(resolved) + unsubscribeFooter('https://.../unsubscribe?t=xxxx')
+        const demo = withAdPrefix(resolved, senderName) + unsubscribeFooter('https://.../unsubscribe?t=xxxx')
         return { name: r.name || '', phone: r.phone || '', body: demo, unresolved: unresolvedVars(resolved) }
       })
     }
@@ -346,6 +347,7 @@ messagesAdRouter.post('/send', async (c) => {
       }, 400)
     }
 
+    const senderName = await getAdSenderName(db, getEntityId(c))   // §50④ 전송자 명칭
     const messages: SMSMessage[] = []
     for (const r of audience.sendable) {
       const token = await getOrCreateUnsubToken(db, r.phoneNorm, r.client_id ?? null)
@@ -354,12 +356,12 @@ messagesAdRouter.post('/send', async (c) => {
       messages.push({
         rcv: r.phone!,
         rcvnm: r.name || '수신자',
-        msg: withAdPrefix(resolved) + unsubscribeFooter(url),
+        msg: withAdPrefix(resolved, senderName) + unsubscribeFooter(url),
       })
     }
 
     // 제목에도 (광고)를 붙인다 — 시행령 §62의3은 "제목이 시작되는 부분"을 규정한다.
-    const subject = withAdPrefix(content.subject || '동산기획')
+    const subject = withAdPrefix(content.subject || senderName, senderName)
 
     let sendResult
     if (channel === 'mms') {

@@ -8,6 +8,14 @@ import { deriveClientBalance } from './ledger/ar-helpers'
 const aiInsights = new Hono<HonoEnv>()
 aiInsights.use('*', authMiddleware)
 
+// ★신용위험 점수 **보류**(2026-09-26 결정). 산식이 틀렸다 — 평균 회수일이 입금×주문 전 조합(카테시안)이고,
+//   다 갚은 주문도 연체로 세며, calculate-all 과 단건 조회의 산식이 다르다. 화면 소비자는 0 이고
+//   (등급 보유 거래처 1곳) calculate-all 은 틀린 등급을 clients 에 **써 넣는다**. 거래처 위험 판단은
+//   여신한도(파생, credit-helpers)가 맡는다. 되살리려면 FIFO 충당 기준으로 산식을 다시 설계한다.
+aiInsights.use('/credit-risk/*', async (c) => c.json({
+  success: false, error: '신용위험 점수는 보류된 기능입니다(산식 재설계 전). 거래처 위험은 여신한도를 보세요.',
+}, 410))
+
 // ─── 리스크 등급별 거래처 현황 (static route — must be before :clientId) ─────
 aiInsights.get('/credit-risk/summary', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {

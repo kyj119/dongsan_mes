@@ -252,3 +252,12 @@ Workflow 15트랙(메타·게이트·도메인 코드·외부 축) → 중·고 
 | 25 | 보류 카드는 장비 신호로 안 바뀐다 | `autoCheckCardItem` 이 HOLD 카드면 품목 기록만 남기고 상태 유지 |
 | 70 | 출고된 건을 준비중으로 되돌리기 막기 | `PATCH /shipments/:id/status` PREPARING ← SHIPPED/IN_TRANSIT/DELIVERED 400(출고취소 안내) |
 | 58 | 재무 스냅샷 전 항목 = 선택 법인(전체 모드면 전사) | AR `deriveArSplit(c)` · AP 3테이블·재고·차입금에 entity 필터. 격리 DB 실측: 법인0 재고 = 법인1+법인2 |
+
+## 결정 5차 (2026-09-26)
+
+| # | 결정 | 반영 |
+|---|---|---|
+| (35 후속) | 비례연차 부여 | `/accrual/yearly`: 근속 1년 미만이고 입사연도 = 전년이면 15 × 재직일수/365(소수 1자리). 로그 사유에 산식. 격리 DB: 2025-11-10 입사 → 2.1일 |
+| 61 | R2 수명주기 90일 | **prod R2 규칙 추가** `expire-daily-90d`(prefix `daily/`) · 고장 난 정리 단계 제거(에러 삼키고 완료 출력) · monthly/ 영구 |
+| 24 | 광고 문자 전송자 명칭 자동 | `withAdPrefix(body, sender)` = 「(광고)법인명」 · 제목도 · 법인명 = 발송 법인 `entities.name` · 수신거부 링크는 기존대로 |
+| 82·83 | 신용위험 점수 보류 | `/api/ai/credit-risk/*` 410(화면 소비자 0, calculate-all 이 틀린 등급을 써 넣던 경로 차단) · 위험 판단 = 여신한도 |
