@@ -205,3 +205,24 @@ button.danger { border-color: #7a4a4a; color: #e0b0b0; }
 /* ★지정 상태는 **설명이 아니라 상태**다 — `.hint` 를 쓰면 설명 접기(.panel.no-hints)에 같이 숨어
    「벌②가 비었다」를 못 보게 된다. 접어도 보여야 하므로 클래스를 따로 둔다(2026-09-21 게이트가 잡음). */
 .pickstate { color: #c8c8c8; font-size: 11px; line-height: 1.45; word-break: keep-all; overflow-wrap: anywhere; }
+
+/* ★판짜기 설정 요약·고급 차이(2026-09-26) — 설명(.hint)이 아니라 상태다: 설명 접기에 같이 숨으면 안 된다 */
+.nest .grp { margin-top: 8px; background: #262626; }
+.nestsum { margin: 8px 0 6px; padding: 5px 7px; border-left: 3px solid #5b8def; background: #232a36; color: #d6dbe4; font-size: 11px; line-height: 1.5; word-break: keep-all; }
+.nestsum .warn { color: #fbbf24; font-weight: 700; }
+.nestsum .on { color: #9fd49f; }
+.advdiff { color: #fbbf24; font-weight: 600; font-size: 11px; margin-left: 4px; }
+
+/* ★결과창 요약·진행·수신 확인(2026-09-27) — 설명(.hint)이 아니라 상태다 */
+.out .osum { font-weight: 700; }
+.out .owarn { color: #fbbf24; margin-top: 2px; }
+.out .odet { margin-top: 4px; }
+.out .odet > summary { cursor: pointer; color: #9aa4b2; font-size: 11px; }
+.out .opre { white-space: pre-wrap; margin-top: 4px; }
+.nestprog { margin: 6px 0; font-size: 11px; color: #d6dbe4; }
+.nestprog b { color: #9fd49f; }
+.nestprog .warn { color: #fbbf24; }
+.regwatch { margin: 6px 0; padding: 4px 7px; font-size: 11px; border-left: 3px solid #5b8def; background: #232a36; color: #d6dbe4; }
+.regwatch.ok { border-left-color: #4caf50; }
+.regwatch.err { border-left-color: #f59e0b; color: #fbbf24; }
+.out .okeep { color: #cfd6df; }

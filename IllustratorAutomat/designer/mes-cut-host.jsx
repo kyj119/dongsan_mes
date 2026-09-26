@@ -68,7 +68,9 @@
 //           정본은 픽셀 방식(js/bleed.js), 배선 전까지는 위치가 맞는 도형별 오프셋을 기본으로
 //   0.9.4 = 사본 확대 경로의 makeMask 를 **검증**한다. 거부돼도 선택이 남아 성공으로 오판했고
 //           클리핑 안 된 사본 + 경계 도형이 아트 레이어에 잔류했다(실측)
-var MESCUT_VERSION = 'CUT-CEP-0.58.0';  // 0.58.0 = ★판 묶음 표시(2026-09-26 작업지시서 「가」 안 1단계). 한 장을 판 여러 개로 나누면 판마다 등록이 따로 생겨 대기함에서 **서로 모르는 별개 건**이었다(`batch_folder` 를 null 로 보냈다). 판 1 의 등록 폴더를 모든 판의 `batch_folder` 로, 총 판 수를 `batch_total` 로 싣는다 — 웹 대기함은 이미 이 값으로 「한 작업」으로 묶어 보여 준다. 판 1장이면 종전처럼 null. 웹·에이전트의 다른 소비자 = 묶음→주문 역추적(같은 주문)뿐. 잃는 것: 없음 · 0.57.0 = ★`mesCut_photoFlags` — 조각별 사진(래스터·배치 이미지) 포함 여부(도련 색 「자동」용 · 2026-09-26). 사진은 가장자리가 부드러워 안쪽에서 색을 뽑고, 벡터는 흐림 끔으로 구워 가장자리 픽셀이 곧 아트 색이다. 잃는 것: 없음(패널이 부를 때만 쓴다) · 0.56.0 = ★굳힌 격자를 **칸에 하나씩 들어가는 조각까지 풀어** 나눈다(2026-09-24 실기 `split.kids4of11` — 0.55.0 으로 격자는 캔버스 안에 들어왔는데 나누기에서 막혀 여전히 14/14 조각별 굳히기 315.6초). PDF 평탄화가 여러 조각의 그림을 「페이지 크기 클립 그룹」 하나(자식 898)에 몰아 넣었고, 맨 위 층만 세던 `mesCut_hardenKids` 가 「덩어리 4 < 조각 11」로 포기했다. 그 클립은 격자 상자 전체라 **자르는 것이 없다**(프로브 실측: 새 규칙으로 풀면 900개가 정확히 14덩어리·폭이 조각 크기와 일치·걸친 것 0·26ms). → `mesCut_hardenLeaves` = 여러 칸에 걸친 것만 안으로 내려간다 — **일반 그룹**과 **안 자르는 클립 그룹**만. 진짜로 자르는 클립이 걸치면 포기(조각별 경로 = 결과물 불변). 한 칸에 들어가는 순간 통째로 담아 조각 내부 그룹·마스크는 그대로다. 판마다 **그 판에 쓰이는 조각만** 옮긴다(`need`). `mesCut_hardenKids` 삭제. 게이트 = `cut:hardengrid` §6. 잃는 것: 없음 · 0.55.0 = ★굳히기 격자를 **확대 후 크기**로 나눈다(2026-09-24 실기 — 1/10 축소 파일 14조각, 적용 332초). 격자는 파일 크기 그대로 PDF 한계(4.9m)로 줄바꿈해 하나만 만들었고, 10배 확대하면 20m 라 캔버스(5.6m)를 넘어 통째로 버려졌다(`hardenwhy=canvas`) → **전 조각이 조각별 굳히기**(조각마다 임시 문서·PDF·임베드). 흔적 = 끝에 지워져야 할 `mes_cut_harden.pdf` 가 남아 있었다(버려진 격자는 정리 대상에서도 빠졌다). → `mesCut_hardenGrids` 가 줄바꿈·높이 한계를 `캔버스 ÷ 배율` 로 잡고 한 격자에 다 안 들어가면 **격자를 더 만든다**. 판마다 그 판에 쓰이는 격자·회전만 배치한다. 종전에 한 격자로 되던 잡은 **그대로 1개**(한계값이 같다) · 종전에 통째로 실패하던 잡(실물 크기로도 4.9m 초과)도 나눠서 산다. 결과에 `grids=`. 게이트 = `cut:hardengrid`. 잃는 것: 없음(같은 평탄화·같은 회전 자리·같은 나누기 검산 — 격자 수만 는다) · 0.54.0 = ★사각 빠른 경로의 호스트 몫(2026-09-23 용준님 승인 · 조건 = 결과물 불변). ①`mesCut_rectProbe` = 조각이 정확히 축 정렬 사각인가(벡터 — 모서리·획·회전·클립 모양; 투명은 패널 굽기가 본다) ②`mesCut_nestBakeAll` 6번째 인자 stripMm = 네 변의 잉크 쪽 띠만 굽기(`S` 줄 · 옛 조각별 경로 없음 — 실패하면 통째로 실패해 패널이 종전 경로로) ③`LS` 줄 = 띠 도련 4장을 액자로 둘러 아트 뒤로(`mesCut_bleedPlaceStrips`). 종전 패널은 셋 다 안 부르므로 **산출물 불변**. 잃는 것: 없음 · 0.53.0 = ★번호 꼬리표가 **돔보 밖으로** 나가던 것 정정(2026-09-23 실기). 아트보드는 「조각+칼선 합집합 + 돔보 여백 10mm」로 다시 맞춰지는데 꼬리표(조각 위·옆 8mm)는 그 뒤에 그려져 합집합에 안 들었다 → 바깥 조각의 꼬리표가 돔보 여백 안에 놓였다. 꼬리표를 **아트보드 맞추기 앞**(칼선·도련 뒤)에 그려 글자가 합집합에 들어가게 한다. 잃는 것: 없음(꼬리표가 있는 판은 그만큼 넓어진다 — 원래 배치가 예약한 자리다) · 0.52.0 =★굳히기 PDF 의 **마크를 명시적으로 끈다**(`mesCut_pdfNoMarks` · 2026-09-23 실기 「도련 모서리에 검정 집게 모양」). 트림/등록 마크·색상 바·페이지 정보·도련 여백은 `PDFSaveOptions` 에 명시하지 않으면 **그 PC 의 마지막 PDF 프리셋**을 물려받는다(0.45.0 `viewAfterSaving` 과 같은 축). 디자이너 PC 의 인쇄용 프리셋(재단 표시 ON)이 굳힌 PDF 에 마크를 넣고, 그 PDF 가 조각으로 임베드돼 판에 찍혔다. 회전·배율이 있는 조각(=PDF 경로)에서만 나므로 조각마다 있다 없다 했다. 저장 자리가 둘이라 공통 함수로. 잃는 것: 없음(마크 없는 PC 는 동일) · 0.51.0 =★조각 번호(2026-09-23 용준님 확정) — 시트 주문(한 파일에 조각 수십 장)에서 「어느 조각이 어느 자리인가」를 번호 하나로 잇는다. 번호는 패널(`piece-number.js`)이 원본 잉크 경계로 매기고(줄-순번 `1-1` · 줄 구조 없으면 `1~N`), 이 호스트는 세 가지만 한다: ①`mesCut_nestBounds` = 조각별 x:y:w:h(mm) — nestSizes 는 크기만 줬다 ②`mesCut_exportOverview` = 원본 아트보드 PNG 1장(패널이 그 위에 번호를 얹어 고객용 이미지·판별 강조본을 만든다 — 원본 문서는 손대지 않는다) ③`nestApply` 의 `T` 줄 = 꼬리표(칼선 바깥·재단하면 버려지는 자리)에 번호 텍스트 → **전용 레이어 `번호`**(인쇄 ON)에 아웃라인으로. 재단선·돔보 레이어가 아니라 DXF 에는 안 들어간다(`mesCut_exportDxf` 는 그 둘만 가져간다). ④등록: 패널이 만든 `thumb_hi.png`(판별 강조본)·`overview.png`(고객용)를 등록 폴더로 옮기고 manifest `files.thumb_hi/overview` + `pieces`(그 판의 조각 목록·ASCII JSON) + `piece_numbering`. 에이전트는 `files.thumb_hi` 를 **이미** base64 로 실어 주므로(Program.cs:1093) 축1 배포 없이 작업지시서까지 간다. ⚠️번호가 꺼져 있으면(패널 기본값) `T` 줄·PNG·pieces 가 오지 않아 **산출물이 종전과 동일**하다. 잃는 것: 없음(켜면 조각마다 위쪽 20×8mm 꼬리표만큼 판이 길어진다 — 47조각 실측 +0.13~0.46%) · 0.50.0 =★「p0.png 를 내보낼 수 없음」 근본 수정(2026-09-18 실기). 굽기 폴더가 `mes_cut_efs_<tag>` 로 **고정**이라 파일명도 매번 `p0.png` 였다. 이전 실행이 못 지운 p0.png 가 잠겨 있으면 일러가 덮어쓰기를 거절하며 **모달**을 띄우는데, 그건 예외가 아니라 `no-output` 으로만 내려온다. 종전 코드는 `purge-left` 를 사유에 적고도 **그대로 진행**해 실패가 예정돼 있었고, 패널은 사람에게 「%TEMP%\mes_cut_efs_* 를 지우세요」를 안내했다 — 원인을 알면서 사람 손에 맡긴 상태. → 폴더를 **실행마다 다른 이름**(`_<ms36>_<seq>`)으로 만들고 쓰고 나서 지운다. 잠긴 잔해가 남아도 **이번 실행에는 영향이 없다**(`mesCut_efsSweepOld` 가 다음에 걷는다). A0 호스트 0.15.0 이 프로브 파일명에 실행 접미사를 붙여 고친 것과 **같은 형태**다(형제 스윙 미완). ⚠이건 그 증상의 **한 원인**을 없앨 뿐이다 — 크기 초과(`px-side-over`)·자원 고갈은 별개로 남는다. 잃는 것: 없음(최종 파일명 `mes_cut_<tag>_<i>.png` 는 패널 규약이라 **그대로** 둔다) · 0.49.0 = ★굴히기 임베드가 만든 사각 클립을 **배치본에서도** 걷어낸다(2026-09-18 용준님 — 레이어 패널에 남는 `<Clipping Path>`). 0.33.0 이 같은 클립을 치웠지만 **칼선 계산용 복제본에서만**이라(:1136) 판에 실제로 놓이는 조각에는 그대로 남아 있었다. 검산을 **지난 뒤**에 치운다 — 검산은 여태와 같은 상태에서 이뤄져야 값이 안 바뀜다. ⚠진짜로 자르던 클립은 **남는다**(`dropNoopClips` 의 안전 판정) — 지우면 숨어 있던 아트가 드러나 실루에이 커지고 재단선이 그림 밖으로 나간다. 잃는 것: 없음(렌더·잌크 경계·칼선 불변 — 레이어 구조만 깔끔해진다) · 0.48.0 = ★돔보 중심 이격 **17mm → 7mm**(2026-09-18 용준님). 코드가 실물과 달랐다 — `mes-cut-host.jsx` 주석의 **2026-08-02 실측 30쌍**이 이미 「돔보 중심 = 칼선 + 7 · 판 = 칼선 + 10」이라고 적고 있었는데 상수만 17 이었다. 호스트 3축(A0·재단·에이전트) + 패널 `DOMBO_MARGIN_MM`(20→10) 네 곳을 **같이** 바꿈 — 한 곳만 바꾸면 조각이 돔보를 덮거나 시트를 넘는다. 잃는 것: 돔보가 판 가장자리에 10mm 더 붙는다(아트보드 확장 23→13mm · 재단 배치 여백 20→10mm 라 조각을 더 넓게 깐는다) · 0.47.0 = ★같은 이름이 오늘 또 나오면 **경고한다** — 픽업 폴더 `_출력/<날짜>` 는 **날짜당 한 자리**이고 에이전트는 크기가 다르면 덮어쓴다(`Program.cs EnsurePickupCopy` = `File.Copy(src, dst, true)`). 그래서 같은 날 같은 거래처·내용·규격·후가공으로 두 번 등록하면 **재단기에 가는 실물만 나중 것 하나**가 된다 — 등록·주문·카드는 둘 다 멀쩡해서 **아무 화면에도 안 나왔다**(09-11·09-15 실측 2건 · `a0:flow` 의 `~픽업` 이 세기는 했지만 막지는 않는다). ⚠️**시스템이 이름을 바꾸지 않는다** — 이 파일명이 그대로 RIP 에 나가는 이름이고, 그 규약이 08-27 에 출력완료 매칭 0% 를 되살린 근거다. 같은 건을 다시 낸 것인지 다른 건인지는 **사람만 안다** → 사실만 알린다(2026-09-18 용준님 「사용자 경고만 추가해줘」). 보는 곳이 둘이다 — 픽업 폴더(이미 복사된 것)와 **오늘의 다른 등록 폴더**(아직 복사 전). 뒤엣것을 안 보면 에이전트가 아직 안 훑은 구간에서 경고가 조용히 빠진다. 크기가 같으면 에이전트가 건너뛰므로(멱등) 조용히 넘어간다. 잃는 것: 없음(산출물·파일명·커밋 순서 불변 — 경고와 manifest `pickup_clash` 만 는다)(`mesCut_pickupClash` · 반환 `pickdup=`) — A0 호스트 0.20.0 과 **같은 결정의 형제 스윕**이다. · 0.46.0 = ★EPS `embedAllFonts` 를 **남은 텍스트가 있을 때만**(`mesCut_needFontEmbed`, 저장 2곳) — A0 호스트 0.9.0 이 같은 줄을 고쳤는데 **재단은 따라오지 않았다**(형제 스윕 미완). 판에 올라가는 조각은 PDF 로 굳혀 배치한 것이고 칼선·돔보는 패스라 임베드할 폰트가 대개 없는데, `true` 고정이라 저장마다 일러에게 「문서 폰트를 전부 열어라」를 시켰다 — 폰트가 **2,159개** 깔린 실기 PC 에서 그 값을 매번 치렀다. 실기 2026-09-17 「재단 주문등록이 시간이 좀 걸린다」의 유력 원인. ⚠️**못 세면 임베드한다** — 텍스트가 남았는데 빠뜨리면 RIP 에서 폰트가 대체돼 글자가 바뀐다(느린 것보다 나쁘다). 잃는 것: 없음(산출물 동일) · 0.45.0 = ★**도련이 조용히 0이 되던 것 정정(P0)** — 클립 확장은 「클립 밖에 감춰진 그림」을 드러내는 방식인데, 그 전제를 **한 번도 검사하지 않고** 넓힌 클립 개수만 세어 성공으로 보고했다. 배치 이미지가 클립에 딱 맞게 잘려 오면(보통의 경우) 클립만 커지고 도련은 0인데 픽셀·단색 경로를 건너뛴다. 실기 2026-09-17: 조각 6개 중 5개가 이 경로 → 「클립 확장 5개(무손실)」로 보고됐지만 실물엔 반 이상 도련이 없었다. 이제 넓히기 **전에** 자식 아트가 사방 b 만큼 뻗어 있는지 재고, 아니면 안 넓힌다(=픽셀 경로로 내려간다). 거절 수는 `clipskip=` 로 실어 보낸다. ⚠️적용 시간은 **늘어난다** — 여태 건너뛰던 조각이 실제로 도련을 하기 때문이다 · ★`PDFSaveOptions.viewAfterSaving = false` **명시**(2곳) — 이 값은 그 PC 일러의 마지막 PDF 프리셋을 물려받아, 켜진 PC 에서는 굳히기 PDF 를 저장할 때마다 Chrome 이 떴다(실기 2026-09-17 · 적용 118.6초). 기본값이 false 인 PC 도 있어 **개발기에서 재현되지 않는다** · 0.44.0 = ★`work.ai`(판) 저장 폐지 — A0 호스트 0.16.0 과 **같은 결정의 형제 스윕**이다(2026-09-15 용준님 「없어도 될 것 같아」). 읽는 코드가 없고(`mes-sheet.jsx` 09-11 은퇴 · 이 등록은 `mode:"single"` 이라 서버가 고르는 `file_path` 는 EPS), 정작 이 호스트에서 **가장 큰 파일**이며, 실패하면 `return 'ERROR'` 로 **등록 자체를 막고 있었다** — 아무도 안 읽는 파일 때문에 재단기 DXF 까지 못 나가던 자리다. manifest `files.work_ai` = null · `work_bytes` 는 이제 **EPS** 크기. 잃는 것: 판을 나중에 열어 고치는 `.ai`(재구성은 패널에서 다시 짠다) · 0.43.0 = ★빈 catch 전수 분류(2026-09-11 용준님 「나」) — 실물에 닿는 4곳은 삼키지 않는다: DXF 임시문서로 못 옮긴 칼선(`dupfail=`) · 판에 못 그린 칼선·구분선(`cutfail=`) · 등록 DXF 실패(manifest `dxf_error`, 'ERROR' 문자열 반환도 실패로). 나머지 225곳은 사유 주석(`ignore:`) — 게이트 `audit:empty-catch`. 잃는 것: 없음(판·파일 불변, 결과 문자열에 필드가 는다) · 0.42.0 =★**0.39.0~0.41.0 회귀 정정(P0)** — `mesCut_outlineStroke` 래퍼 **안**의 `executeMenuCommand` 자리에 호출부 코드가 들어가 래퍼가 자기를 부르고 있었다(무한 재귀). `mesCut_vecSilhouette` 가 예외로 죽어 **칼선이 아예 안 나왔고** 도련도 깨졌다. 두 번째 호출부(도련)는 반대로 **생짜 호출 그대로**라 검산을 안 지났다 — 둘 다 제자리로. ⚠️게이트가 재귀 호출을 「호출부 2곳」으로 **세어** 통과시켰다 → 이제 개수가 아니라 **자리**를 본다(래퍼 안/바깥으로 갈라서 검사) · 0.41.0 = ★굽기 **전후**로 파일을 만들 수 있었는지 잰다(`mesCut_ioProbe`) — 「p0.png 를 내보낼 수 없음」이 굽기 탓인지 **이미 못 쓰는 상태로 들어온 탓**인지 갈린다. pre_ 가 X 면 굽기 탓이 아니다 · ★`mesCut_ioProbeGet` — nestBakeAll 의 ERROR 반환은 자리마다 형태가 달라 사유를 실을 자리가 없는데, **정작 그 경로가 p0.png 다**. 패널이 실패 직후 꺼내 간다 · 0.40.0 = ★manifest 를 못 쓰면 **패널에게 넘긴다**(`mesCut_manifestPending`) — A0 0.9.0 과 같은 계약(형제 스윕: CEP 축의 manifest 쓰기는 둘이다). 시트·EPS·썸네일은 이미 다 나왔고 빠진 것은 manifest 한 장뿐이라, 그것만 CEP 가 쓰면 등록이 완성된다. ⚠️그렇다고 성공으로 보고하지 않는다 — `ERROR ...;mfpending=N` 으로 돌려주므로 **구버전 패널은 여태처럼 실패로 본다**(조용한 성공 금지) · ★`mesCut_asciiFold` — 반환은 ASCII 만 안전한데 manifest 에는 거래처명이 한글로 들어 있다 · 0.39.0 = ★`OffsetPath v22`(획→면)가 **먹었는지 검산**한다 — 명령 ID 에 버전 번호가 박혀 있어(v22) 일러가 번호를 올리면 예외도 0개도 없이 **아무것도 안 한다**. 그러면 실루엣 대신 가느다란 고리가 나오고 그대로 칼선이 되어 재단기까지 간다(:1235 가 「가장 나쁜 실패 방식」이라 부른 그것). 안 먹으면 **칼선을 만들지 않는다** · ★굽기 **변 길이** 상한을 굽기 전에 잰다(`MESCUT_EFS_MAX_PX_SIDE`) — 패널 예산은 **면적**만 봐서 200x8,000mm 조각이 800x32,000px 로 통과했다. 넘으면 일러가 「…을(를) 전송할 수 없습니다」 **모달**을 띄우고 CEP 가 거기서 멈춘다(예외가 아니라 catch 로 못 잡는다) · ★일괄 굽기 실패 사유를 `efswhy=` 로 화면까지 — 옛 경로로 떨어져도 판은 나와서 아무도 몰랐다(조용한 격하) · ★`efsPurge` 가 못 지운 개수를 돌려준다(덮어쓰기 거절의 원인) · ★manifest 에 `ai_version` · 0.38.2 = ★판을 **만들기 전에** 판 규격을 검사한다 — 한계를 넘으면 `documents.add` 가 `PARM`(1346458189) 으로 죽는데 그 코드는 어느 인자가 왜 틀렸는지 말해 주지 않는다. 이제 「판 N 이 1050x13442mm 로 일러 한계 5644mm 를 넘습니다」로 거절한다(판=생산 단위=등록 1건이라 애초에 만들면 안 되는 값이다) · 0.38.1 = ★0.38.0 의 원점 정규화가 **틀린 자리**로 옮기고 있었다 — 새 문서의 아트보드는 [0,h,w,0](y 가 0 에서 **위로**)인데 (0,0) 에 맞춰 아트를 아트보드 **아래**로 보냈다. 캔버스는 아트보드 중심 ±2,886mm 뿐이라 조각이 크면 그대로 `AOoC`(실측: 950x2380 조각을 y=-2385 로, 하한 -1,696). 굽기 격자도 **0.38.0 이전부터** 같은 이유로 아트보드 밖에 깔리고 있었다(그래서 일괄이 실패하고 조각별 폴백으로 떨어졌다) → 세 경로 전부 **아트보드 기준**으로 · 0.38.0 = ★굽기가 한 임시문서에 안 들어가면 **문서를 나눈다** — 여태는 여기서 실패해 패널이 조각당 임시문서를 만드는 옛 경로로 떨어졌다(조각당 4초) · 그 옛 경로(rasterizeItem·rasterize)가 복제본을 **원점으로 안 옮겨** 원본에서 원점에서 먼 조각이 `AOoC`(1095724867)로 죽던 것 정정(실사용: 1050폭 세로 1열 파일의 4번째 조각) · 0.37.0 = ★굳힌 조각 배정을 「가장 가까운 중심」에서 **셀 상자 포함**으로 — 굳힌 PDF 는 조각별 그룹이 아니라 낱개 패스로 풀려(4조각=57개) 넓은 조각의 끝쪽이 옆 조각 중심에 더 가까워 어깋나 **검산이 터지고 판 전체가 조각당 6.5초 경로**로 돌았다(적용 111.9초 중 98.1초) · 0.36.0 = ★굳히기 격자가 **PDF 페이지 한계(200인치=5,080mm)**를 넘어 저장이 취소되던 것 정정 — 캔버스 한계(5,644mm)로 재고 있어 조각이 많으면 판이 조용히 조각당 3초 경로로 떨어졌다(23조각 실패→성공) · 적용 단계별 소요(`ms=`)와 굳히기 실패 이유(`hardenwhy=`)를 결과에 실어 보낸다(판은 불변) · 0.35.0 = ★굽기 export 는 **호출당 고정비가 지배**한다 — 조각마다 exportFile 하던 것을 아트보드 N개 + `exportForScreens` 1회로 (실물 23조각 8,263ms ×2 → 4,841 + 695ms). 경로 규약은 그대로 — 파일을 `Folder.temp` 의 옛 이름으로 옮겨 둔다(안 그러면 도련이 조용히 사라진다) · 0.34.0 = ★칼선에서 **자를 수 없는 부스러기**를 걷어낸다(실물 판 131개 중 15개가 0.01x0mm 3점 조각 — 컬파운드 안쪽이라 안 보였다) · 글자는 글자대로 남긴다(감싸기 안 함) · 0.33.0 = ★회전한 조각의 칼선이 **바깥 사각**으로 나가던 것 정정 — PDF 굳히기 임베드가 만든 사각 클립이 실루에을 덮었다(자르는 게 없는 클립만 걷어낸다) · 0.32.0 = ★굳혀서 배치하는 새 법 — **한 판에 1회**(조각 전부를 계자 PDF 로 한 번 굳힌 뒤 회전 값마다 마스턼 하나 → 배치는 duplicate) — 회전만 걸려도 조각당 3.05초가 붙던 것이 조각 수와 무관해진다 · 0.31.0 = ★등록 manifest 가 저장 배율을 반영한다(measured_cm=실물 · scale_pct=100/N) — 여태 1/2 로 짜면 주문 라인 규격이 1/S · 청구면적이 1/S² 였다 · 0.30.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
+var MESCUT_VERSION = 'CUT-CEP-0.60.0';  // 0.60.0 = ★단품 칼선 제거(2026-09-27 용준님 「안 쓴다」) — mesCut_drawCut·vecCut·exportDxfAuto·rasterize·dxfPath·selectionPaths 를 뺐다(판짜기 경로는 한 줄도 안 바뀜 · 고아 분석으로 확인). 잃는 것 = 패널 셸 0.104 이하가 [칼선 만들기]를 누르면 함수 없음 오류(셸 0.105 는 버튼이 없다).
+//  // 0.59.0 = ★등록 후 수신 확인(2026-09-27) — nestRegister 가 등록 폴더 이름(names=)을 돌려주고 mesCut_ingestState 가 에이전트 표식(.ingested/.rejected)을 센다. 잃는 것 없음(반환에 키 추가 · 조회 함수 추가).
+//  // 0.58.0 = ★판 묶음 표시(2026-09-26 작업지시서 「가」 안 1단계). 한 장을 판 여러 개로 나누면 판마다 등록이 따로 생겨 대기함에서 **서로 모르는 별개 건**이었다(`batch_folder` 를 null 로 보냈다). 판 1 의 등록 폴더를 모든 판의 `batch_folder` 로, 총 판 수를 `batch_total` 로 싣는다 — 웹 대기함은 이미 이 값으로 「한 작업」으로 묶어 보여 준다. 판 1장이면 종전처럼 null. 웹·에이전트의 다른 소비자 = 묶음→주문 역추적(같은 주문)뿐. 잃는 것: 없음 · 0.57.0 = ★`mesCut_photoFlags` — 조각별 사진(래스터·배치 이미지) 포함 여부(도련 색 「자동」용 · 2026-09-26). 사진은 가장자리가 부드러워 안쪽에서 색을 뽑고, 벡터는 흐림 끔으로 구워 가장자리 픽셀이 곧 아트 색이다. 잃는 것: 없음(패널이 부를 때만 쓴다) · 0.56.0 = ★굳힌 격자를 **칸에 하나씩 들어가는 조각까지 풀어** 나눈다(2026-09-24 실기 `split.kids4of11` — 0.55.0 으로 격자는 캔버스 안에 들어왔는데 나누기에서 막혀 여전히 14/14 조각별 굳히기 315.6초). PDF 평탄화가 여러 조각의 그림을 「페이지 크기 클립 그룹」 하나(자식 898)에 몰아 넣었고, 맨 위 층만 세던 `mesCut_hardenKids` 가 「덩어리 4 < 조각 11」로 포기했다. 그 클립은 격자 상자 전체라 **자르는 것이 없다**(프로브 실측: 새 규칙으로 풀면 900개가 정확히 14덩어리·폭이 조각 크기와 일치·걸친 것 0·26ms). → `mesCut_hardenLeaves` = 여러 칸에 걸친 것만 안으로 내려간다 — **일반 그룹**과 **안 자르는 클립 그룹**만. 진짜로 자르는 클립이 걸치면 포기(조각별 경로 = 결과물 불변). 한 칸에 들어가는 순간 통째로 담아 조각 내부 그룹·마스크는 그대로다. 판마다 **그 판에 쓰이는 조각만** 옮긴다(`need`). `mesCut_hardenKids` 삭제. 게이트 = `cut:hardengrid` §6. 잃는 것: 없음 · 0.55.0 = ★굳히기 격자를 **확대 후 크기**로 나눈다(2026-09-24 실기 — 1/10 축소 파일 14조각, 적용 332초). 격자는 파일 크기 그대로 PDF 한계(4.9m)로 줄바꿈해 하나만 만들었고, 10배 확대하면 20m 라 캔버스(5.6m)를 넘어 통째로 버려졌다(`hardenwhy=canvas`) → **전 조각이 조각별 굳히기**(조각마다 임시 문서·PDF·임베드). 흔적 = 끝에 지워져야 할 `mes_cut_harden.pdf` 가 남아 있었다(버려진 격자는 정리 대상에서도 빠졌다). → `mesCut_hardenGrids` 가 줄바꿈·높이 한계를 `캔버스 ÷ 배율` 로 잡고 한 격자에 다 안 들어가면 **격자를 더 만든다**. 판마다 그 판에 쓰이는 격자·회전만 배치한다. 종전에 한 격자로 되던 잡은 **그대로 1개**(한계값이 같다) · 종전에 통째로 실패하던 잡(실물 크기로도 4.9m 초과)도 나눠서 산다. 결과에 `grids=`. 게이트 = `cut:hardengrid`. 잃는 것: 없음(같은 평탄화·같은 회전 자리·같은 나누기 검산 — 격자 수만 는다) · 0.54.0 = ★사각 빠른 경로의 호스트 몫(2026-09-23 용준님 승인 · 조건 = 결과물 불변). ①`mesCut_rectProbe` = 조각이 정확히 축 정렬 사각인가(벡터 — 모서리·획·회전·클립 모양; 투명은 패널 굽기가 본다) ②`mesCut_nestBakeAll` 6번째 인자 stripMm = 네 변의 잉크 쪽 띠만 굽기(`S` 줄 · 옛 조각별 경로 없음 — 실패하면 통째로 실패해 패널이 종전 경로로) ③`LS` 줄 = 띠 도련 4장을 액자로 둘러 아트 뒤로(`mesCut_bleedPlaceStrips`). 종전 패널은 셋 다 안 부르므로 **산출물 불변**. 잃는 것: 없음 · 0.53.0 = ★번호 꼬리표가 **돔보 밖으로** 나가던 것 정정(2026-09-23 실기). 아트보드는 「조각+칼선 합집합 + 돔보 여백 10mm」로 다시 맞춰지는데 꼬리표(조각 위·옆 8mm)는 그 뒤에 그려져 합집합에 안 들었다 → 바깥 조각의 꼬리표가 돔보 여백 안에 놓였다. 꼬리표를 **아트보드 맞추기 앞**(칼선·도련 뒤)에 그려 글자가 합집합에 들어가게 한다. 잃는 것: 없음(꼬리표가 있는 판은 그만큼 넓어진다 — 원래 배치가 예약한 자리다) · 0.52.0 =★굳히기 PDF 의 **마크를 명시적으로 끈다**(`mesCut_pdfNoMarks` · 2026-09-23 실기 「도련 모서리에 검정 집게 모양」). 트림/등록 마크·색상 바·페이지 정보·도련 여백은 `PDFSaveOptions` 에 명시하지 않으면 **그 PC 의 마지막 PDF 프리셋**을 물려받는다(0.45.0 `viewAfterSaving` 과 같은 축). 디자이너 PC 의 인쇄용 프리셋(재단 표시 ON)이 굳힌 PDF 에 마크를 넣고, 그 PDF 가 조각으로 임베드돼 판에 찍혔다. 회전·배율이 있는 조각(=PDF 경로)에서만 나므로 조각마다 있다 없다 했다. 저장 자리가 둘이라 공통 함수로. 잃는 것: 없음(마크 없는 PC 는 동일) · 0.51.0 =★조각 번호(2026-09-23 용준님 확정) — 시트 주문(한 파일에 조각 수십 장)에서 「어느 조각이 어느 자리인가」를 번호 하나로 잇는다. 번호는 패널(`piece-number.js`)이 원본 잉크 경계로 매기고(줄-순번 `1-1` · 줄 구조 없으면 `1~N`), 이 호스트는 세 가지만 한다: ①`mesCut_nestBounds` = 조각별 x:y:w:h(mm) — nestSizes 는 크기만 줬다 ②`mesCut_exportOverview` = 원본 아트보드 PNG 1장(패널이 그 위에 번호를 얹어 고객용 이미지·판별 강조본을 만든다 — 원본 문서는 손대지 않는다) ③`nestApply` 의 `T` 줄 = 꼬리표(칼선 바깥·재단하면 버려지는 자리)에 번호 텍스트 → **전용 레이어 `번호`**(인쇄 ON)에 아웃라인으로. 재단선·돔보 레이어가 아니라 DXF 에는 안 들어간다(`mesCut_exportDxf` 는 그 둘만 가져간다). ④등록: 패널이 만든 `thumb_hi.png`(판별 강조본)·`overview.png`(고객용)를 등록 폴더로 옮기고 manifest `files.thumb_hi/overview` + `pieces`(그 판의 조각 목록·ASCII JSON) + `piece_numbering`. 에이전트는 `files.thumb_hi` 를 **이미** base64 로 실어 주므로(Program.cs:1093) 축1 배포 없이 작업지시서까지 간다. ⚠️번호가 꺼져 있으면(패널 기본값) `T` 줄·PNG·pieces 가 오지 않아 **산출물이 종전과 동일**하다. 잃는 것: 없음(켜면 조각마다 위쪽 20×8mm 꼬리표만큼 판이 길어진다 — 47조각 실측 +0.13~0.46%) · 0.50.0 =★「p0.png 를 내보낼 수 없음」 근본 수정(2026-09-18 실기). 굽기 폴더가 `mes_cut_efs_<tag>` 로 **고정**이라 파일명도 매번 `p0.png` 였다. 이전 실행이 못 지운 p0.png 가 잠겨 있으면 일러가 덮어쓰기를 거절하며 **모달**을 띄우는데, 그건 예외가 아니라 `no-output` 으로만 내려온다. 종전 코드는 `purge-left` 를 사유에 적고도 **그대로 진행**해 실패가 예정돼 있었고, 패널은 사람에게 「%TEMP%\mes_cut_efs_* 를 지우세요」를 안내했다 — 원인을 알면서 사람 손에 맡긴 상태. → 폴더를 **실행마다 다른 이름**(`_<ms36>_<seq>`)으로 만들고 쓰고 나서 지운다. 잠긴 잔해가 남아도 **이번 실행에는 영향이 없다**(`mesCut_efsSweepOld` 가 다음에 걷는다). A0 호스트 0.15.0 이 프로브 파일명에 실행 접미사를 붙여 고친 것과 **같은 형태**다(형제 스윙 미완). ⚠이건 그 증상의 **한 원인**을 없앨 뿐이다 — 크기 초과(`px-side-over`)·자원 고갈은 별개로 남는다. 잃는 것: 없음(최종 파일명 `mes_cut_<tag>_<i>.png` 는 패널 규약이라 **그대로** 둔다) · 0.49.0 = ★굴히기 임베드가 만든 사각 클립을 **배치본에서도** 걷어낸다(2026-09-18 용준님 — 레이어 패널에 남는 `<Clipping Path>`). 0.33.0 이 같은 클립을 치웠지만 **칼선 계산용 복제본에서만**이라(:1136) 판에 실제로 놓이는 조각에는 그대로 남아 있었다. 검산을 **지난 뒤**에 치운다 — 검산은 여태와 같은 상태에서 이뤄져야 값이 안 바뀜다. ⚠진짜로 자르던 클립은 **남는다**(`dropNoopClips` 의 안전 판정) — 지우면 숨어 있던 아트가 드러나 실루에이 커지고 재단선이 그림 밖으로 나간다. 잃는 것: 없음(렌더·잌크 경계·칼선 불변 — 레이어 구조만 깔끔해진다) · 0.48.0 = ★돔보 중심 이격 **17mm → 7mm**(2026-09-18 용준님). 코드가 실물과 달랐다 — `mes-cut-host.jsx` 주석의 **2026-08-02 실측 30쌍**이 이미 「돔보 중심 = 칼선 + 7 · 판 = 칼선 + 10」이라고 적고 있었는데 상수만 17 이었다. 호스트 3축(A0·재단·에이전트) + 패널 `DOMBO_MARGIN_MM`(20→10) 네 곳을 **같이** 바꿈 — 한 곳만 바꾸면 조각이 돔보를 덮거나 시트를 넘는다. 잃는 것: 돔보가 판 가장자리에 10mm 더 붙는다(아트보드 확장 23→13mm · 재단 배치 여백 20→10mm 라 조각을 더 넓게 깐는다) · 0.47.0 = ★같은 이름이 오늘 또 나오면 **경고한다** — 픽업 폴더 `_출력/<날짜>` 는 **날짜당 한 자리**이고 에이전트는 크기가 다르면 덮어쓴다(`Program.cs EnsurePickupCopy` = `File.Copy(src, dst, true)`). 그래서 같은 날 같은 거래처·내용·규격·후가공으로 두 번 등록하면 **재단기에 가는 실물만 나중 것 하나**가 된다 — 등록·주문·카드는 둘 다 멀쩡해서 **아무 화면에도 안 나왔다**(09-11·09-15 실측 2건 · `a0:flow` 의 `~픽업` 이 세기는 했지만 막지는 않는다). ⚠️**시스템이 이름을 바꾸지 않는다** — 이 파일명이 그대로 RIP 에 나가는 이름이고, 그 규약이 08-27 에 출력완료 매칭 0% 를 되살린 근거다. 같은 건을 다시 낸 것인지 다른 건인지는 **사람만 안다** → 사실만 알린다(2026-09-18 용준님 「사용자 경고만 추가해줘」). 보는 곳이 둘이다 — 픽업 폴더(이미 복사된 것)와 **오늘의 다른 등록 폴더**(아직 복사 전). 뒤엣것을 안 보면 에이전트가 아직 안 훑은 구간에서 경고가 조용히 빠진다. 크기가 같으면 에이전트가 건너뛰므로(멱등) 조용히 넘어간다. 잃는 것: 없음(산출물·파일명·커밋 순서 불변 — 경고와 manifest `pickup_clash` 만 는다)(`mesCut_pickupClash` · 반환 `pickdup=`) — A0 호스트 0.20.0 과 **같은 결정의 형제 스윕**이다. · 0.46.0 = ★EPS `embedAllFonts` 를 **남은 텍스트가 있을 때만**(`mesCut_needFontEmbed`, 저장 2곳) — A0 호스트 0.9.0 이 같은 줄을 고쳤는데 **재단은 따라오지 않았다**(형제 스윕 미완). 판에 올라가는 조각은 PDF 로 굳혀 배치한 것이고 칼선·돔보는 패스라 임베드할 폰트가 대개 없는데, `true` 고정이라 저장마다 일러에게 「문서 폰트를 전부 열어라」를 시켰다 — 폰트가 **2,159개** 깔린 실기 PC 에서 그 값을 매번 치렀다. 실기 2026-09-17 「재단 주문등록이 시간이 좀 걸린다」의 유력 원인. ⚠️**못 세면 임베드한다** — 텍스트가 남았는데 빠뜨리면 RIP 에서 폰트가 대체돼 글자가 바뀐다(느린 것보다 나쁘다). 잃는 것: 없음(산출물 동일) · 0.45.0 = ★**도련이 조용히 0이 되던 것 정정(P0)** — 클립 확장은 「클립 밖에 감춰진 그림」을 드러내는 방식인데, 그 전제를 **한 번도 검사하지 않고** 넓힌 클립 개수만 세어 성공으로 보고했다. 배치 이미지가 클립에 딱 맞게 잘려 오면(보통의 경우) 클립만 커지고 도련은 0인데 픽셀·단색 경로를 건너뛴다. 실기 2026-09-17: 조각 6개 중 5개가 이 경로 → 「클립 확장 5개(무손실)」로 보고됐지만 실물엔 반 이상 도련이 없었다. 이제 넓히기 **전에** 자식 아트가 사방 b 만큼 뻗어 있는지 재고, 아니면 안 넓힌다(=픽셀 경로로 내려간다). 거절 수는 `clipskip=` 로 실어 보낸다. ⚠️적용 시간은 **늘어난다** — 여태 건너뛰던 조각이 실제로 도련을 하기 때문이다 · ★`PDFSaveOptions.viewAfterSaving = false` **명시**(2곳) — 이 값은 그 PC 일러의 마지막 PDF 프리셋을 물려받아, 켜진 PC 에서는 굳히기 PDF 를 저장할 때마다 Chrome 이 떴다(실기 2026-09-17 · 적용 118.6초). 기본값이 false 인 PC 도 있어 **개발기에서 재현되지 않는다** · 0.44.0 = ★`work.ai`(판) 저장 폐지 — A0 호스트 0.16.0 과 **같은 결정의 형제 스윕**이다(2026-09-15 용준님 「없어도 될 것 같아」). 읽는 코드가 없고(`mes-sheet.jsx` 09-11 은퇴 · 이 등록은 `mode:"single"` 이라 서버가 고르는 `file_path` 는 EPS), 정작 이 호스트에서 **가장 큰 파일**이며, 실패하면 `return 'ERROR'` 로 **등록 자체를 막고 있었다** — 아무도 안 읽는 파일 때문에 재단기 DXF 까지 못 나가던 자리다. manifest `files.work_ai` = null · `work_bytes` 는 이제 **EPS** 크기. 잃는 것: 판을 나중에 열어 고치는 `.ai`(재구성은 패널에서 다시 짠다) · 0.43.0 = ★빈 catch 전수 분류(2026-09-11 용준님 「나」) — 실물에 닿는 4곳은 삼키지 않는다: DXF 임시문서로 못 옮긴 칼선(`dupfail=`) · 판에 못 그린 칼선·구분선(`cutfail=`) · 등록 DXF 실패(manifest `dxf_error`, 'ERROR' 문자열 반환도 실패로). 나머지 225곳은 사유 주석(`ignore:`) — 게이트 `audit:empty-catch`. 잃는 것: 없음(판·파일 불변, 결과 문자열에 필드가 는다) · 0.42.0 =★**0.39.0~0.41.0 회귀 정정(P0)** — `mesCut_outlineStroke` 래퍼 **안**의 `executeMenuCommand` 자리에 호출부 코드가 들어가 래퍼가 자기를 부르고 있었다(무한 재귀). `mesCut_vecSilhouette` 가 예외로 죽어 **칼선이 아예 안 나왔고** 도련도 깨졌다. 두 번째 호출부(도련)는 반대로 **생짜 호출 그대로**라 검산을 안 지났다 — 둘 다 제자리로. ⚠️게이트가 재귀 호출을 「호출부 2곳」으로 **세어** 통과시켰다 → 이제 개수가 아니라 **자리**를 본다(래퍼 안/바깥으로 갈라서 검사) · 0.41.0 = ★굽기 **전후**로 파일을 만들 수 있었는지 잰다(`mesCut_ioProbe`) — 「p0.png 를 내보낼 수 없음」이 굽기 탓인지 **이미 못 쓰는 상태로 들어온 탓**인지 갈린다. pre_ 가 X 면 굽기 탓이 아니다 · ★`mesCut_ioProbeGet` — nestBakeAll 의 ERROR 반환은 자리마다 형태가 달라 사유를 실을 자리가 없는데, **정작 그 경로가 p0.png 다**. 패널이 실패 직후 꺼내 간다 · 0.40.0 = ★manifest 를 못 쓰면 **패널에게 넘긴다**(`mesCut_manifestPending`) — A0 0.9.0 과 같은 계약(형제 스윕: CEP 축의 manifest 쓰기는 둘이다). 시트·EPS·썸네일은 이미 다 나왔고 빠진 것은 manifest 한 장뿐이라, 그것만 CEP 가 쓰면 등록이 완성된다. ⚠️그렇다고 성공으로 보고하지 않는다 — `ERROR ...;mfpending=N` 으로 돌려주므로 **구버전 패널은 여태처럼 실패로 본다**(조용한 성공 금지) · ★`mesCut_asciiFold` — 반환은 ASCII 만 안전한데 manifest 에는 거래처명이 한글로 들어 있다 · 0.39.0 = ★`OffsetPath v22`(획→면)가 **먹었는지 검산**한다 — 명령 ID 에 버전 번호가 박혀 있어(v22) 일러가 번호를 올리면 예외도 0개도 없이 **아무것도 안 한다**. 그러면 실루엣 대신 가느다란 고리가 나오고 그대로 칼선이 되어 재단기까지 간다(:1235 가 「가장 나쁜 실패 방식」이라 부른 그것). 안 먹으면 **칼선을 만들지 않는다** · ★굽기 **변 길이** 상한을 굽기 전에 잰다(`MESCUT_EFS_MAX_PX_SIDE`) — 패널 예산은 **면적**만 봐서 200x8,000mm 조각이 800x32,000px 로 통과했다. 넘으면 일러가 「…을(를) 전송할 수 없습니다」 **모달**을 띄우고 CEP 가 거기서 멈춘다(예외가 아니라 catch 로 못 잡는다) · ★일괄 굽기 실패 사유를 `efswhy=` 로 화면까지 — 옛 경로로 떨어져도 판은 나와서 아무도 몰랐다(조용한 격하) · ★`efsPurge` 가 못 지운 개수를 돌려준다(덮어쓰기 거절의 원인) · ★manifest 에 `ai_version` · 0.38.2 = ★판을 **만들기 전에** 판 규격을 검사한다 — 한계를 넘으면 `documents.add` 가 `PARM`(1346458189) 으로 죽는데 그 코드는 어느 인자가 왜 틀렸는지 말해 주지 않는다. 이제 「판 N 이 1050x13442mm 로 일러 한계 5644mm 를 넘습니다」로 거절한다(판=생산 단위=등록 1건이라 애초에 만들면 안 되는 값이다) · 0.38.1 = ★0.38.0 의 원점 정규화가 **틀린 자리**로 옮기고 있었다 — 새 문서의 아트보드는 [0,h,w,0](y 가 0 에서 **위로**)인데 (0,0) 에 맞춰 아트를 아트보드 **아래**로 보냈다. 캔버스는 아트보드 중심 ±2,886mm 뿐이라 조각이 크면 그대로 `AOoC`(실측: 950x2380 조각을 y=-2385 로, 하한 -1,696). 굽기 격자도 **0.38.0 이전부터** 같은 이유로 아트보드 밖에 깔리고 있었다(그래서 일괄이 실패하고 조각별 폴백으로 떨어졌다) → 세 경로 전부 **아트보드 기준**으로 · 0.38.0 = ★굽기가 한 임시문서에 안 들어가면 **문서를 나눈다** — 여태는 여기서 실패해 패널이 조각당 임시문서를 만드는 옛 경로로 떨어졌다(조각당 4초) · 그 옛 경로(rasterizeItem·rasterize)가 복제본을 **원점으로 안 옮겨** 원본에서 원점에서 먼 조각이 `AOoC`(1095724867)로 죽던 것 정정(실사용: 1050폭 세로 1열 파일의 4번째 조각) · 0.37.0 = ★굳힌 조각 배정을 「가장 가까운 중심」에서 **셀 상자 포함**으로 — 굳힌 PDF 는 조각별 그룹이 아니라 낱개 패스로 풀려(4조각=57개) 넓은 조각의 끝쪽이 옆 조각 중심에 더 가까워 어깋나 **검산이 터지고 판 전체가 조각당 6.5초 경로**로 돌았다(적용 111.9초 중 98.1초) · 0.36.0 = ★굳히기 격자가 **PDF 페이지 한계(200인치=5,080mm)**를 넘어 저장이 취소되던 것 정정 — 캔버스 한계(5,644mm)로 재고 있어 조각이 많으면 판이 조용히 조각당 3초 경로로 떨어졌다(23조각 실패→성공) · 적용 단계별 소요(`ms=`)와 굳히기 실패 이유(`hardenwhy=`)를 결과에 실어 보낸다(판은 불변) · 0.35.0 = ★굽기 export 는 **호출당 고정비가 지배**한다 — 조각마다 exportFile 하던 것을 아트보드 N개 + `exportForScreens` 1회로 (실물 23조각 8,263ms ×2 → 4,841 + 695ms). 경로 규약은 그대로 — 파일을 `Folder.temp` 의 옛 이름으로 옮겨 둔다(안 그러면 도련이 조용히 사라진다) · 0.34.0 = ★칼선에서 **자를 수 없는 부스러기**를 걷어낸다(실물 판 131개 중 15개가 0.01x0mm 3점 조각 — 컬파운드 안쪽이라 안 보였다) · 글자는 글자대로 남긴다(감싸기 안 함) · 0.33.0 = ★회전한 조각의 칼선이 **바깥 사각**으로 나가던 것 정정 — PDF 굳히기 임베드가 만든 사각 클립이 실루에을 덮었다(자르는 게 없는 클립만 걷어낸다) · 0.32.0 = ★굳혀서 배치하는 새 법 — **한 판에 1회**(조각 전부를 계자 PDF 로 한 번 굳힌 뒤 회전 값마다 마스턼 하나 → 배치는 duplicate) — 회전만 걸려도 조각당 3.05초가 붙던 것이 조각 수와 무관해진다 · 0.31.0 = ★등록 manifest 가 저장 배율을 반영한다(measured_cm=실물 · scale_pct=100/N) — 여태 1/2 로 짜면 주문 라인 규격이 1/S · 청구면적이 1/S² 였다 · 0.30.0 = ★품목(item_id) 전달 — 주문서가 품목·단가까지 자동으로 채운다 · 0.29.0 = PDF 아트보드 기준을 잉크 경계로(visibleBounds 로 잡으면 마스크로 가린 여분이 되살아나 조각이 커지고 재단선을 넘는다) · 0.28.0 = 회전도 임베드 앞으로 + **회전만 있어도 PDF 경로**(1:1 회전도 마스크가 안 따라와 배경 절반이 회색) + 검산 기대폭에 회전 반영 · 0.27.0 = 배율 기준을 PDF 아트보드로(배치 직후 보고값은 잘려 있어 +23%) · 확대는 임베드 **전**(뒤로 옮기면 마스크가 안 따라와 배경이 죽는다) · 0.26.0 = 배율 확대 크기 계산을 임베드 **후**로(배치 직후 값은 그림 있는 데까지로 잘려 있어 클립 밖 삐짐 조각이 +23% 크게 나왔다) · 0.25.0 = 배율 확대를 PDF 배치로(아트를 직접 키우면 불투명도 마스크가 안 따라와 배경이 사라진다) · 0.24.0 = 문서 전체 개체 선택(mesCut_selectAllTop) · 0.23.0 = 도련을 같은 문서에서 내보냄(굽기 왕복 1회) + 이전 판 문서 닫기 · 0.22.0 = 등록 파일명=실물 규약 + trim 실제값
 var MESCUT_PT_PER_MM = 72 / 25.4;
 // ★일러 문서·아트보드 한계 = 16383pt(227인치 ≈ 5779mm). 넘는 자리로 아트보드를 옮기면
 //   `an Illustrator error occurred: 1095724867 ('AOoC')` 로 죽는다 — 아트보드가 캔버스 밖이라는 뜻이다.
@@ -177,7 +179,7 @@ function mesCut_selectionInfo() {
     var sel = doc.selection;
     if (!sel || sel.length === 0) return 'none';
     // 재단선은 세지도 재지도 않는다 — 이 값이 패널의 해상도 선택 입력이라
-    // 이전 칼선이 섞이면 화면 표시와 실제 처리 대상이 어긋난다(mesCut_rasterize 와 같은 기준).
+    // 이전 칼선이 섞이면 화면 표시와 실제 처리 대상이 어긋난다(판짜기 굽기와 같은 기준).
     var n = 0;
     var bb = mesCut_selBounds();
     for (var i = 0; i < sel.length; i++) if (!mesCut_isCutItem(sel[i])) n++;
@@ -186,7 +188,8 @@ function mesCut_selectionInfo() {
     return 'n=' + n + ';w=' + f(bb[2] - bb[0]) + ';h=' + f(bb[1] - bb[3]) + ';x=' + f(bb[0]) + ';y=' + f(bb[1]);
 }
 
-// ── P1: 칼선 파이프라인 ─────────────────────────────────────────────
+// ── P1: 칼선 파이프라인 (★아래 ①③ 의 단품 진입점 mesCut_rasterize·mesCut_drawCut 은 2026-09-27 제거 —
+//    판짜기는 mesCut_rasterizeItem·nestApply 로 같은 분담을 따른다. 역할 분담 원칙은 그대로다) ──────────
 // 역할 분담(D5) = **일러는 픽셀을 주고 좌표를 받아 그리기만** 한다.
 //   ① mesCut_rasterize  선택 아트 → 임시 PNG (패널이 canvas 로 마스크를 만든다)
 //   ② (패널) 마스크 → EDT → 오프셋 → 컨투어 → 단순화 → mm 좌표   ← geometry.js 정본
@@ -198,55 +201,6 @@ var MESCUT_CUT_LAYER = '재단선';   // A0·판짜기와 **같은 규약**(M100
 /** 패널↔호스트 대용량 인자 통로. evalScript 는 ASCII·길이 제약이 있어 좌표는 파일로 넘긴다(A0 와 같은 방식). */
 function mesCut_paramsPath() {
     return Folder.temp.fsName.replace(/\\/g, '/') + '/mes_cut_params.txt';
-}
-
-/**
- * **단품 칼선**([칼선 만들기])의 DXF 저장 경로 — 등록 절차가 없는 즉석 작업이라 temp 다.
- * 네스팅 등록분은 여기를 쓰지 않는다: mesCut_saveOneSheet 가 **등록 폴더(Z: IA-등록/<건별>)에
- * EPS 와 같은 이름으로** 굽고 manifest.files.dxf 에 싣는다(2026-07-31, spec §9-7 해소).
- */
-function mesCut_dxfPath() {
-    var base = 'cut';
-    try { if (app.documents.length) base = app.activeDocument.name.replace(/\.[^.]+$/, ''); } catch (e) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
-    base = base.replace(/[^A-Za-z0-9_\-]/g, '_');   // ASCII 브릿지 안전
-    if (!base) base = 'cut';
-    return Folder.temp.fsName.replace(/\\/g, '/') + '/' + base + '_cut.dxf';
-}
-
-/**
- * ★★단품 DXF — **경로를 호스트가 정하고 내보내기까지 한다** (2026-08-08, spec §6.29·§9-7 해소).
- *
- * 종전에는 패널이 `mesCut_dxfPath()` 로 경로를 **받아서 다시 인자로 넘겼다.** evalScript 인자는
- * ASCII 라 한글이 `_` 로 죽었고, 실제 산출물이 이랬다:
- *     `___260723_________________________cut.dxf`  ← 어느 작업인지 식별 불가
- * 게다가 저장 위치가 `%TEMP%` 라 작업 폴더에도 없었다. **왕복을 없애면 두 제약이 같이 사라진다** —
- * 인자로 안 받으니 ASCII 제약이 없고, 위치도 여기서 정할 수 있다.
- * ⚠️ 반환 방향은 한글이 살아남는다(레이어명 실측 확인) → 표시용 경로는 그대로 돌려준다.
- *    단, `path=` 를 **맨 뒤**에 둔다 — 경로에 `;` 는 없지만 `:`·`\` 는 있으므로 뒤를 통째로 읽게 한다.
- *
- * 저장 위치 = **`.ai` 옆**(EPS 와 쌍이 되는 자리, §2.1). 저장 안 된 문서(무제-N)면 temp 로 떨어진다.
- * @returns 'ok;items=<n>;where=<doc|temp>;path=<전체 경로>' | 'ERROR ...'
- */
-function mesCut_exportDxfAuto() {
-    if (app.documents.length === 0) return 'ERROR 문서 없음';
-    var doc = app.activeDocument;
-    var base = 'cut', dir = null, where = 'temp';
-    try {
-        var nm = String(doc.name).replace(/\.[^.]+$/, '');
-        if (nm) base = nm;
-    } catch (eN) { /* ignore: 탐색 중 참조 무효 개체는 건너뛴다 — 경계·개수는 남은 개체로 계산한다 */ }
-    try { if (doc.path && doc.path.fsName) { dir = doc.path.fsName; where = 'doc'; } } catch (eP) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
-    if (!dir) dir = Folder.temp.fsName;
-    // 파일명에 쓸 수 없는 문자만 막는다 — **한글은 그대로 둔다**(그게 이 함수의 목적이다)
-    base = base.replace(/[\\\/:*?"<>|]/g, '_');
-    if (!base) base = 'cut';
-    var out = dir.replace(/\\/g, '/') + '/' + base + '_cut.dxf';
-    var r = mesCut_exportDxf(out);
-    if (String(r).indexOf('ok') !== 0) return r;
-    var items = '';
-    var mI = String(r).match(/items=(\d+)/);
-    if (mI) items = mI[1];
-    return 'ok;items=' + items + ';where=' + where + ';path=' + out;
 }
 
 function mesCut_readParams() {
@@ -377,110 +331,6 @@ function mesCut_selBounds() {
     return (L === null) ? null : [L, T, R, B];
 }
 
-/**
- * ① 선택 아트를 PNG 로 굽는다. 반환 = 'ok;path=<file>;w=<px>;h=<px>;ox=<mm>;oy=<mm>;mmpp=<mm/px>'
- *   ox/oy = 마스크 (0,0) 픽셀이 문서에서 갖는 mm 좌표(원점, y-up 기준 상단).
- *   ⚠️ 임시 문서에 복제해서 굽는다 — 현재 문서의 아트보드를 건드리면 사용자 작업이 오염된다.
- *   ⚠️ 배경은 흰색이 아니라 **투명**으로 두고, 패널은 alpha 로 마스크를 만든다.
- *      (흰 배경으로 구우면 '흰색 잉크'와 배경을 구분할 수 없다 — 실측에서 확인된 함정)
- */
-function mesCut_rasterize(mmPerPx, padMm, fillClosed) {
-    var bb = mesCut_selBounds();
-    if (!bb) return 'ERROR 선택 없음';
-    if (!mmPerPx || mmPerPx <= 0) mmPerPx = 0.5;
-    // ★여백 필수 — 아트 크기에 딱 맞춰 구우면 **오프셋 팽창분이 캔버스 밖으로 잘린다**.
-    //   2026-07-31 실측: 여백 0 일 때 오프셋 3mm 를 줬는데 좌 3.00·하 2.90 은 맞고
-    //   상 0.00·우 -0.35 로 잘렸다(잉크가 이미지 가장자리에 닿은 변). 재단선이 조용히 틀리게 나온다.
-    //   패널이 offsetMm + 여유를 넘긴다.
-    if (!padMm || padMm < 0) padMm = 0;
-
-    var srcDoc = app.activeDocument;
-    // ⚠️ selection 은 live 다 — documents.add() 로 활성 문서가 바뀌면 참조가 무효해진다.
-    //    **문서를 만들기 전에** 실제 배열로 고정해 둔다(2026-07-31: 이걸 안 해서 복제가 0건이었다).
-    // ★★ '재단선' 레이어의 아이템은 **제외**한다 — 전체선택(selectall)은 재단선도 잡으므로,
-    //    칼선이 이미 있는 상태에서 다시 실행하면 **이전 칼선이 입력 잉크로 섞인다**.
-    //    (2026-07-31 실측: 그 상태로 재실행하니 조각 255개가 전부 이어져 외곽 1개가 됐다.
-    //     오프셋을 바꿔 다시 뽑는 것은 실사용에서 흔한 조작이라 반드시 걸러야 한다.)
-    var items = [];
-    for (var si = 0; si < srcDoc.selection.length; si++) {
-        var it = srcDoc.selection[si];
-        if (!mesCut_isCutItem(it)) items.push(it);
-    }
-    if (!items.length) return 'ERROR 선택이 재단선뿐입니다 — 그림을 선택하세요';
-    var wPt = bb[2] - bb[0], hPt = bb[1] - bb[3];
-    if (wPt <= 0 || hPt <= 0) return 'ERROR 선택 영역이 0';
-
-    var outPath = Folder.temp.fsName.replace(/\\/g, '/') + '/mes_cut_raster.png';
-    var tmp = null;
-    var dupErr = '';
-    try {
-        tmp = mesCut_newDocMM(wPt, hPt);
-        var lay = tmp.layers[0];
-        // ★★ 문서 간 duplicate 는 **원본 문서가 active 일 때만** 동작한다.
-        //    documents.add() 가 새 문서를 active 로 만들어 버리므로 여기서 되돌린다.
-        //    2026-07-31 실측(같은 아이템·같은 호출):
-        //        duplicate(Document)                 → 0개 (예외도 없이 조용히 실패)
-        //        duplicate(Layer)                    → 0개 (마찬가지)
-        //        activeDocument = 원본 후 duplicate  → 99개 ✅
-        //    예외를 던지지 않기 때문에 try/catch 로는 절대 못 잡는다 — 결과 개수로 검증할 것.
-        app.activeDocument = srcDoc;
-        var dups = [];
-        for (var i = 0; i < items.length; i++) {
-            try { dups.push(items[i].duplicate(lay, ElementPlacement.PLACEATBEGINNING)); }
-            catch (eDup) { if (!dupErr) dupErr = String(eDup); }
-        }
-        app.activeDocument = tmp;
-        // 사본에서만 채운다 — 원본은 무손상
-        var nFill = fillClosed ? mesCut_fillClosedIn(tmp) : 0;
-        // ★조각의 position 을 **낱개로** 재계산하지 않는다 — 대신 **아트보드를 아트에 맞춘다**.
-        //   좌표 보정(position 재계산)은 group/clip 기준이 visibleBounds 와 어긋나 빈 PNG 를 만든 전례가 있다
-        //   (2026-07-31: 100% 투명 PNG). 아트보드를 맞추면 보정식이 아예 필요 없다.
-        //   패널에 돌려주는 origin 은 **원본 문서의 bb** 다 — 조각의 상대 배치는 복제해도 그대로이므로
-        //   픽셀→mm 매핑(origin + px*mmpp)이 원본 문서 좌표로 정확히 떨어진다.
-        var u = mesCut_unionOf(mesCut_topItems(tmp));
-        // (u 는 사본 전체의 경계다 — 아래에서 원점으로 옮긴 뒤 다시 잰다)
-        if (!u) {
-            var n = tmp.pageItems.length;
-            tmp.close(SaveOptions.DONOTSAVECHANGES);
-            return 'ERROR 복제 실패 (선택 ' + items.length + '개 → 복제 ' + n + '개' + (dupErr ? ('; ' + dupErr) : '') + ')';
-        }
-        // ★★단, **전체를 같은 양만큼** 아트보드 자리로 끌어다 놓는다 (2026-09-04). 위 전례와 다르다 —
-        //   낱개 보정이 아니라 평행이동이라 상대 배치가 그대로고, 기준도 union 하나뿐이다.
-        //   안 옮기면 아트가 원점에서 멀 때 아트보드 이동이 캔버스를 벗어나 `AOoC` 로 죽는다.
-        //   ⚠️**(0,0) 이 아니다** — 아트보드는 [0, h, w, 0] 이라 원점에 맞추면 아트가 그 아래로 간다.
-        var abR = tmp.artboards[0].artboardRect;
-        var mvx = abR[0] - u[0], mvy = abR[1] - u[1];
-        for (var mv = 0; mv < dups.length; mv++) { try { dups[mv].translate(mvx, mvy); } catch (eMv) { /* ignore: 실패한 개체는 건너뛴다 — 개수는 호출자가 성공 카운트·반환값으로 본다 */ } }
-        u = mesCut_unionOf(mesCut_topItems(tmp)) || [u[0] + mvx, u[1] + mvy, u[2] + mvx, u[3] + mvy];
-        var padPt = padMm * MESCUT_PT_PER_MM;
-        tmp.artboards[0].artboardRect = [u[0] - padPt, u[1] + padPt, u[2] + padPt, u[3] - padPt];
-        wPt = (u[2] - u[0]) + padPt * 2;
-        hPt = (u[1] - u[3]) + padPt * 2;
-
-        var opts = new ExportOptionsPNG24();
-        opts.antiAliasing = true;
-        opts.transparency = true;          // ★배경 투명 — 흰 잉크와 배경을 구분하기 위해
-        opts.artBoardClipping = true;
-        var scalePct = (1 / mmPerPx) * (25.4 / 72) * 100;  // 1pt = 25.4/72 mm
-        opts.horizontalScale = scalePct;
-        opts.verticalScale = scalePct;
-        tmp.exportFile(new File(outPath), ExportType.PNG24, opts);
-
-        var wPx = Math.round(wPt * scalePct / 100);
-        var hPx = Math.round(hPt * scalePct / 100);
-        var f = function (pt) { return Math.round((pt / MESCUT_PT_PER_MM) * 100) / 100; };
-        // origin = 마스크 (0,0) 픽셀의 **원본 문서 mm 좌표**. 여백만큼 바깥으로 밀려 있다.
-        var res = 'ok;path=' + outPath + ';w=' + wPx + ';h=' + hPx
-            + ';ox=' + f(bb[0] - padPt) + ';oy=' + f(bb[1] + padPt) + ';mmpp=' + mmPerPx + ';pad=' + padMm
-            + ';filled=' + nFill;
-        tmp.close(SaveOptions.DONOTSAVECHANGES); tmp = null;
-        return res;
-    } catch (e) {
-        if (tmp) { try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) { /* ignore: 임시 문서 닫기 — 이미 닫혔거나 참조가 무효 */ } }
-        return 'ERROR rasterize: ' + e;
-    }
-}
-
 function mesCut_unionOf(items) {
     var L = null, T = null, R = null, B = null;
     for (var i = 0; i < items.length; i++) {
@@ -586,85 +436,6 @@ function mesCut_fillClosedIn(doc) {
 }
 
 /**
- * ★선택 아트의 **벡터 좌표**를 텍스트로 내보낸다 (계측용 · spec §6.26).
- *
- * 왜: 실루엣은 이미 파일 안에 정확한 벡터로 있는데, 지금 파이프라인은 그걸 렌더 → 임계 →
- *     픽셀 계단 → 다시 곡선 피팅으로 **복원**한다. 왕복하며 오차를 만들고 그걸 다시 줄인다.
- *     좌표를 그대로 읽으면 그 왕복이 통째로 없어지는지 재보려는 것이다.
- *     (실측 근거: 시트컷 실도안 18조각 = 서브패스 20·앵커 1117·곡선핸들 91%·래스터/텍스트 0)
- *
- * 형식 (mm · **문서 좌표 · y-up** · ASCII):
- *   I <idx> <filled> <stroked> <strokeWidthMm> <type>
- *   S <closed> ax,ay,lx,ly,rx,ry ax,ay,lx,ly,rx,ry ...
- *   ⚠️ `I` 하나 = **even-odd 채우기를 공유하는 단위**(compound path 는 서브패스 여럿을 묶는다).
- * 반환 'ok;items=..;subs=..;pts=..;skipped=..;raster=..;text=..'
- *   skipped/raster/text 가 0 이 아니면 **벡터만으로는 실루엣이 안 나온다** → 래스터 경로 폴백.
- */
-function mesCut_selectionPaths(outPath) {
-    if (app.documents.length === 0) return 'ERROR 문서 없음';
-    if (!outPath) return 'ERROR 경로 없음';
-    var d = app.activeDocument;
-    var sel = d.selection;
-    if (!sel || !sel.length) return 'ERROR 선택 없음';
-    var PT = MESCUT_PT_PER_MM;
-    var lines = [], nI = 0, nS = 0, nP = 0, skipped = 0, nRaster = 0, nText = 0;
-    function mm(v) { return Math.round((v / PT) * 1000) / 1000; }
-    function emitSub(p) {
-        try {
-            var parts = ['S ' + (p.closed ? 1 : 0)];
-            for (var k = 0; k < p.pathPoints.length; k++) {
-                var q = p.pathPoints[k];
-                parts.push(mm(q.anchor[0]) + ',' + mm(q.anchor[1]) + ','
-                    + mm(q.leftDirection[0]) + ',' + mm(q.leftDirection[1]) + ','
-                    + mm(q.rightDirection[0]) + ',' + mm(q.rightDirection[1]));
-                nP++;
-            }
-            lines.push(parts.join(' '));
-            nS++;
-        } catch (e) { skipped++; }
-    }
-    function head(it, type) {
-        var f = 0, s = 0, w = 0;
-        try { f = it.filled ? 1 : 0; } catch (e1) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
-        try { s = it.stroked ? 1 : 0; if (s) w = mm(it.strokeWidth); } catch (e2) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
-        lines.push('I ' + nI + ' ' + f + ' ' + s + ' ' + w + ' ' + type);
-        nI++;
-    }
-    function walk(it) {
-        var t;
-        try { t = it.typename; } catch (e) { skipped++; return; }
-        try { if (it.hidden) return; } catch (e3) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
-        if (mesCut_isCutItem(it)) return;
-        if (t === 'PathItem') {
-            try { if (it.guides) return; } catch (e4) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
-            head(it, 'path'); emitSub(it);
-        } else if (t === 'CompoundPathItem') {
-            var first = null;
-            try { first = it.pathItems.length ? it.pathItems[0] : null; } catch (e5) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
-            head(first || it, 'compound');
-            try { for (var c = 0; c < it.pathItems.length; c++) emitSub(it.pathItems[c]); } catch (e6) { skipped++; }
-        } else if (t === 'GroupItem') {
-            try { for (var g = 0; g < it.pageItems.length; g++) walk(it.pageItems[g]); } catch (e7) { skipped++; }
-        } else if (t === 'RasterItem' || t === 'PlacedItem' || t === 'MeshItem') {
-            nRaster++;   // 좌표가 없다 = 벡터 경로로는 못 만든다
-        } else if (t === 'TextFrame') {
-            nText++;     // 아웃라인 전이면 좌표가 없다
-        } else { skipped++; }
-    }
-    for (var i = 0; i < sel.length; i++) walk(sel[i]);
-    if (!nS) return 'ERROR 벡터 경로 없음 (래스터/텍스트만 선택됨)';
-    try {
-        var f2 = new File(outPath);
-        f2.encoding = 'UTF-8';
-        if (!f2.open('w')) return 'ERROR 파일 열기 실패: ' + outPath;
-        f2.write(lines.join('\n'));
-        f2.close();
-    } catch (eW) { return 'ERROR 쓰기 실패: ' + eW; }
-    return 'ok;items=' + nI + ';subs=' + nS + ';pts=' + nP
-        + ';skipped=' + skipped + ';raster=' + nRaster + ';text=' + nText + ';path=' + outPath;
-}
-
-/**
  * 베지어 좌표열 → 경로. pts = [a0, c1,c2,a1, c1,c2,a2, ...] (pt 단위)
  *   = 시작 앵커 하나 + 세그먼트마다 (앞 앵커의 오른쪽 핸들 · 뒤 앵커의 왼쪽 핸들 · 뒤 앵커) 3개.
  *
@@ -701,118 +472,6 @@ function mesCut_bezPath(container, pts) {
         pp.leftDirection = inH[(k - 1 + m) % m] ? inH[(k - 1 + m) % m] : anchors[k];
     }
     return pi;
-}
-
-/**
- * ③ 좌표 → '재단선' 레이어. params 파일 형식(UTF-8, 줄 단위):
- *     P x,y x,y x,y ...      폴리곤 1개 (mm, y-up 문서 좌표)
- *     B x,y x,y x,y ...      베지어 1개 (시작 앵커 + 3개씩 — mesCut_bezPath 참조)
- *     H / HB                 직전 외곽의 구멍 (각각 폴리곤 / 베지어)
- *     C cx,cy,d              원 1개 (타공 — 중심 mm + 지름 mm)
- *   반환 'ok;paths=<n>;circles=<n>' 또는 'ERROR ...'
- *   ⚠️ 기존 '재단선' 레이어 내용은 지우지 않는다 — 사용자가 손으로 넣은 선이 있을 수 있다.
- */
-function mesCut_drawCut() {
-    if (app.documents.length === 0) return 'ERROR 문서 없음';
-    var raw = mesCut_readParams();
-    if (!raw) return 'ERROR params 없음: ' + mesCut_paramsPath();
-    var doc = app.activeDocument;
-
-    var layer = null;
-    for (var li = 0; li < doc.layers.length; li++) {
-        if (doc.layers[li].name === MESCUT_CUT_LAYER) { layer = doc.layers[li]; break; }
-    }
-    if (!layer) { layer = doc.layers.add(); layer.name = MESCUT_CUT_LAYER; }
-    if (layer.locked) layer.locked = false;
-    if (!layer.visible) layer.visible = true;
-
-    var mag = new CMYKColor(); mag.cyan = 0; mag.magenta = 100; mag.yellow = 0; mag.black = 0;
-    var lines = String(raw).split(/[\r\n]+/);
-    var nP = 0, nC = 0, nH = 0;
-
-    /** 'x,y x,y ...' (mm) → [[xPt,yPt], ...] */
-    function parsePts(body) {
-        var pts = body.replace(/^\s+|\s+$/g, '').split(/\s+/);
-        var arr = [];
-        for (var j = 0; j < pts.length; j++) {
-            var xy = pts[j].split(',');
-            if (xy.length !== 2) continue;
-            arr.push([parseFloat(xy[0]) * MESCUT_PT_PER_MM, parseFloat(xy[1]) * MESCUT_PT_PER_MM]);
-        }
-        return arr;
-    }
-    function styleIt(o) { o.filled = false; o.stroked = true; o.strokeColor = mag; o.strokeWidth = 0.6; }
-
-    // 외곽 1개 + 구멍 0~N 개를 한 덩어리로 마감한다.
-    //   구멍이 있으면 **compound path** 로 묶어야 일러에서 속이 뚫린 것으로 보인다.
-    //   (재단 자체는 개별 닫힌 경로여도 되지만, 작업자가 화면에서 구멍을 확인할 수 있어야 한다)
-    var pendOuter = null, pendHoles = [];   // {bez:bool, pts:[[x,y],...]}
-    /** 폴리라인이든 베지어든 여기 한 곳에서 만든다 — 두 갈래로 나누면 스타일·닫힘이 어긋난다. */
-    function mkPath(container, spec) {
-        var pi;
-        if (spec.bez) {
-            pi = mesCut_bezPath(container, spec.pts);
-        } else {
-            pi = container.pathItems.add();
-            pi.setEntirePath(spec.pts);
-            pi.closed = true;
-        }
-        if (pi) styleIt(pi);
-        return pi;
-    }
-    function flush() {
-        if (!pendOuter) return;
-        try {
-            if (pendHoles.length === 0) {
-                if (mkPath(layer, pendOuter)) nP++;
-            } else {
-                var cp = layer.compoundPathItems.add();
-                mkPath(cp, pendOuter);
-                for (var q = 0; q < pendHoles.length; q++) { if (mkPath(cp, pendHoles[q])) nH++; }
-                nP++;
-            }
-        } catch (eF) {
-            // compound 실패 시 개별 경로로라도 남긴다 — 재단은 닫힌 경로만 있으면 된다.
-            try {
-                if (mkPath(layer, pendOuter)) nP++;
-                for (var w = 0; w < pendHoles.length; w++) { if (mkPath(layer, pendHoles[w])) nH++; }
-            } catch (eF2) { /* ignore: 칼선을 못 만든 조각은 nP·nH 에 안 들어간다 — 반환 개수로 드러난다 */ }
-        }
-        pendOuter = null; pendHoles = [];
-    }
-
-    for (var i = 0; i < lines.length; i++) {
-        var ln = lines[i];
-        if (!ln || ln.length < 2) continue;
-        // ★접두사는 **첫 공백까지**로 읽는다 — 'HB' 처럼 두 글자짜리가 생겼다(charAt(0) 이면 'H' 로 오인).
-        var sp0 = ln.indexOf(' ');
-        var kind = sp0 < 0 ? ln : ln.substring(0, sp0);
-        var body = sp0 < 0 ? '' : ln.substring(sp0 + 1);
-        if (kind === 'P' || kind === 'B') {
-            flush();                       // 직전 덩어리 마감
-            var arr = parsePts(body);
-            if (arr.length >= 3) pendOuter = { bez: kind === 'B', pts: arr };
-        } else if (kind === 'H' || kind === 'HB') {
-            var ha = parsePts(body);
-            if (pendOuter && ha.length >= 3) pendHoles.push({ bez: kind === 'HB', pts: ha });
-        } else if (kind === 'C') {
-            var c = body.replace(/^\s+|\s+$/g, '').split(',');
-            if (c.length !== 3) continue;
-            var cx = parseFloat(c[0]) * MESCUT_PT_PER_MM;
-            var cy = parseFloat(c[1]) * MESCUT_PT_PER_MM;
-            var d = parseFloat(c[2]) * MESCUT_PT_PER_MM;
-            try {
-                var el = layer.pathItems.ellipse(cy + d / 2, cx - d / 2, d, d);
-                el.filled = false;
-                el.stroked = true;
-                el.strokeColor = mag;
-                el.strokeWidth = 0.6;
-                nC++;
-            } catch (eC) { /* ignore: 타공 원을 못 만든 자리는 nC 에 안 들어간다 — 반환 개수로 드러난다 */ }
-        }
-    }
-    flush();   // 마지막 덩어리
-    return 'ok;paths=' + nP + ';holes=' + nH + ';circles=' + nC;
 }
 
 // ── ★벡터 칼선 — 래스터 왕복을 건너뛴다 (2026-08-01, 용준님 지시) ──────
@@ -1862,8 +1521,9 @@ function mesCut_vecBleedRegions(doc, items, offsetMm, bleedMm, fillClosed) {
 /**
  * ⚠️ **레거시 — 네스팅(`mesCut_nestApply`)은 더 이상 이 함수를 쓰지 않는다**(2026-08-05 배선).
  *    정본은 `mesCut_bleedPlaceItem`(Repeat Last Pixel PNG)이고, 계층은 클립 확장 → 픽셀 → 단색이다.
- *    여기 남은 `region`/`scale`/`edge` 분기는 **전부 실패로 판명된 방식**이며, P1(`mesCut_vecCut`)
- *    단일 경로가 아직 이 함수를 부르기 때문에만 살아 있다. P1 을 전환하면 통째로 지운다.
+ *    여기 남은 `region`/`scale`/`edge` 분기는 **전부 실패로 판명된 방식**이다. 단품 진입점(`mesCut_vecCut`)은
+ *    2026-09-27 제거됐고, 지금 이 함수를 부르는 곳은 판짜기 nestApply(벡터 도련 폴백) 하나뿐이다 — 분기 정리는
+ *    그 호출이 어떤 방식으로 들어오는지 실측한 뒤에 한다(추측으로 지우지 않는다).
  *    되살리려는 사람은 `mesCut_bleedPlaceItem` 의 주석(1차 출처 4건)을 먼저 반박할 것.
  */
 function mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode, ringSpec) {
@@ -2095,55 +1755,6 @@ function mesCut_vecProbe() {
     if (!items.length) return 'ERROR 선택이 재단선뿐입니다';
     var reason = mesCut_vecReason(items);
     return reason ? ('fallback;reason=' + reason) : 'ok';
-}
-
-/**
- * P1(벡터) — 선택 아트에서 칼선을 만든다.
- * 반환 'ok;paths=<n>;anchors=<n>' | 'fallback;reason=<사유>' | 'ERROR ..'
- * ⚠️ 기존 '재단선' 레이어 내용은 지우지 않는다(수동 선 보호) — 재실행 누적은 패널이 알린다.
- */
-function mesCut_vecCut(offsetMm, fillClosed, bleedMm, bleedMode) {
-    if (app.documents.length === 0) return 'ERROR 문서 없음';
-    var doc = app.activeDocument;
-    var sel = doc.selection;
-    if (!sel || !sel.length) return 'ERROR 선택 없음';
-    var items = [], i;
-    for (i = 0; i < sel.length; i++) if (!mesCut_isCutItem(sel[i])) items.push(sel[i]);
-    if (!items.length) return 'ERROR 선택이 재단선뿐입니다';
-    var reason = mesCut_vecReason(items);
-    if (reason) return 'fallback;reason=' + reason;
-    // ★활성 레이어를 기억한다 — 메뉴 명령(group·expandStyle)이 **선택이 있는 레이어를 활성화**하므로
-    //   ensureCutLayer 에서 되돌려 놔도 다시 재단선으로 넘어간다. 끝에서 한 번 더 되돌린다.
-    //   안 되돌리면 칼선을 만든 뒤 사용자가 그리는 그림이 전부 재단선 레이어로 들어간다(실측).
-    var prevLayer = null;
-    try { prevLayer = doc.activeLayer; } catch (eP) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
-    var cutLayer = mesCut_ensureCutLayer(doc);
-    try { if (cutLayer.locked) cutLayer.locked = false; } catch (eL) { /* ignore: 잠금 해제 — 실패하면 칼선을 못 넣어 아래 개수(nP)로 드러난다 */ }
-    try { if (!cutLayer.visible) cutLayer.visible = true; } catch (eV) { /* ignore: 숨김 해제 — 실패하면 칼선을 못 넣어 아래 개수(nP)로 드러난다 */ }
-    // ★메뉴 명령이 모달을 띄우면 여기서 멈춘다 — 억제하고 **끝에서 반드시 되돌린다**(0.8.1)
-    var silent = mesCut_silentBegin();
-    var r;
-    try { r = mesCut_vecSilhouette(doc, items, cutLayer, offsetMm, fillClosed); }
-    catch (e) { mesCut_silentEnd(silent); return 'ERROR vecCut: ' + e; }
-    if (r.err) { mesCut_silentEnd(silent); return 'ERROR ' + r.err; }
-    // ★도련 — 칼선을 만든 **뒤**에 한다(칼선 레이어가 이미 정리된 상태여야 실루엣이 안 섞인다)
-    var bl = null;
-    if (bleedMm > 0) {
-        try { doc.selection = null; for (i = 0; i < items.length; i++) items[i].selected = true; } catch (eB0) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
-        try { bl = mesCut_vecBleed(doc, items, offsetMm, bleedMm, fillClosed, bleedMode); } catch (eB) { bl = { ok: false, err: '' + eB }; }
-    }
-    // 원래 선택을 되돌린다 — 연속 실행이 자연스럽도록
-    try { doc.selection = null; for (i = 0; i < items.length; i++) items[i].selected = true; } catch (eR) { /* ignore: 선택 상태 조작 — 실패하면 다음 단계가 빈 선택으로 끝나 사유를 돌려준다 */ }
-    try { if (prevLayer && prevLayer !== cutLayer) doc.activeLayer = prevLayer; } catch (eR2) { /* ignore: 개체 종류·상태에 따라 없는 속성 — 기본값으로 건너뛴다 */ }
-    mesCut_silentEnd(silent);
-    // 도련 실패는 **사유 코드까지** 실어 보낸다 — '0' 만 보내면 패널이 "왜 안 됐는지"를 말할 수 없다.
-    //   ⚠️ 한글은 못 싣는다(evalScript 브릿지 = ASCII). 코드로 보내고 **패널이 번역**한다.
-    //   ⚠️ `bleed=0` 은 **그대로 두고** 코드는 별도 키로 붙인다 — 축2(호스트)는 축3·축4(껍데기)보다
-    //      먼저 배포되므로, 형식을 바꾸면 구 껍데기가 실패를 아예 못 알아본다(조용히 사라진다).
-    var blTxt = '-';
-    if (bl) blTxt = bl.ok ? (bl.mode || '1') : '0';
-    return 'ok;paths=' + r.n + ';anchors=' + r.anchors + ';bleed=' + blTxt
-        + (bl && !bl.ok ? (';bleedcode=' + (bl.code || 'fail')) : '');
 }
 
 /**
@@ -4159,7 +3770,7 @@ function mesCut_nestApply(vecOffsetMm, vecFillClosed, vecBleedMm, vecBleedMode, 
                 }
             } else if (sh.cuts.length) {
                 var cl = mesCut_ensureCutLayer(doc);
-                // ★구멍(`H`/`HB`)이 있으면 **compound path** 로 묶는다 — 단품 칼선(mesCut_drawCut)과
+                // ★구멍(`H`/`HB`)이 있으면 **compound path** 로 묶는다 — 종전 단품 칼선(2026-09-27 제거)과
                 //   같은 규칙이다. 재단 자체는 닫힌 경로만 있으면 되지만, 작업자가 화면에서
                 //   "속이 뚫렸다"를 확인할 수 있어야 한다(ㅇ·ㅁ·0·8 은 안 뚫리면 그냥 틀린 칼선이다).
                 var mkCutPath = function (container, spec) {
@@ -4623,8 +4234,34 @@ function mesCut_nestRegister() {
     try { app.activeDocument = srcDoc; } catch (e1) { /* ignore: 활성 문서 복귀는 편의 — 원본이 닫혔으면 되돌릴 대상이 없다 */ }
     var pend = ($.global.mesCutMfPending || []).length;
     var dup = ($.global.mesCutPickDup || []).length;   // 픽업 이름 충돌 수 = 패널이 사람에게 알린다
-    if (pend) return 'ERROR manifest 쓰기 실패;mfpending=' + pend + ';folders=' + made + ';pickdup=' + dup;
-    return 'ok;folders=' + made + ';pickdup=' + dup;
+    // names = 이 등록이 만든 폴더 이름(ASCII — mesCut_sanitize 된 PC 이름 + 시각) · 패널이 수신 확인에 쓴다(0.59.0)
+    var names = folders.join('|');
+    if (pend) return 'ERROR manifest 쓰기 실패;mfpending=' + pend + ';folders=' + made + ';pickdup=' + dup + ';names=' + names;
+    return 'ok;folders=' + made + ';pickdup=' + dup + ';names=' + names;
+}
+
+/**
+ * ★등록 폴더들의 수신 상태 (0.59.0 · 2026-09-27) — 에이전트가 가져가면 `.ingested`, 거절하면 `.rejected*` 를 남긴다.
+ *   2026-09-26 실기: 에이전트가 꺼져 등록 9건이 대기함에 안 들어갔는데 패널은 「보냈습니다」로 끝나 아무도 몰랐다.
+ *   패널이 등록 뒤 몇 초마다 이걸 불러 「대기함 수신 k/N」을 띄운다. 읽기만 한다(파일을 만들거나 지우지 않는다).
+ * @param names 'a|b|c' — nestRegister 가 돌려준 폴더 이름. 형식이 아니면(경로 문자 등) 건너뛴다.
+ * @returns 'ok;n=<센 폴더>;ing=<수신>;rej=<거절>;miss=<폴더 없음>'
+ */
+function mesCut_ingestState(names) {
+    var list = String(names || '').split('|');
+    var n = 0, ing = 0, rej = 0, miss = 0;
+    for (var i = 0; i < list.length; i++) {
+        var nm = list[i];
+        if (!nm || !/^[A-Za-z0-9_\-]+$/.test(nm)) continue;
+        n++;
+        var f = new Folder(MESCUT_REGISTER_ROOT + '/' + nm);
+        if (!f.exists) { miss++; continue; }
+        if (new File(f.fsName + '/.ingested').exists) { ing++; continue; }
+        var rj = null;
+        try { rj = f.getFiles('.rejected*'); } catch (eR) { rj = null; } // 목록 실패 = 아직 모름(수신 대기로 센다)
+        if (rj && rj.length) rej++;
+    }
+    return 'ok;n=' + n + ';ing=' + ing + ';rej=' + rej + ';miss=' + miss;
 }
 
 function mesCut_saveOneSheet(doc, idx, R, clientName, pcName, userName) {
