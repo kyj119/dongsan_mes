@@ -472,7 +472,7 @@ clientsRouter.get('/:id/intelligence', async (c) => {
     // 1. 수익성: 최근 6개월 매출/원가/마진
     const profitability = await c.env.DB.prepare(`
       SELECT
-        COALESCE(SUM(oi.unit_price * oi.quantity), 0) as total_revenue,
+        COALESCE(SUM(oi.amount), 0) as total_revenue,   -- amount = 실청구액(에누리·최소청구·면적 반영). unit_price×수량은 AREA 라인에서 ㎡단가×장수라 틀린다
         COALESCE(SUM(oi.total_cost), 0) as total_cost
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id

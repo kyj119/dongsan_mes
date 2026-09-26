@@ -124,7 +124,7 @@ async function loadPending() {
 
 // 내 요청/전체 요청은 같은 GET /api/approvals 를 쓴다. 초기화에서 둘이 동시에 불려 같은 응답을 2번 받아 오던 것을
 // 진행 중 요청 1건으로 합친다(2026-09-09 실측). 완료 후엔 캐시를 비워 이후 갱신은 매번 새로 받는다.
-let _approvalsListPromise = null;
+var _approvalsListPromise = null;
 function fetchApprovalsList() {
   if (!_approvalsListPromise) {
     _approvalsListPromise = axios.get('/api/approvals')

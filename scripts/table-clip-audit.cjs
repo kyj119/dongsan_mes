@@ -202,6 +202,13 @@ function assertUpdateTarget() {
   const current = {};
   for (const p of report) for (const h of p.hits) current[`${p.path}|${h.col}`] = { short: h.short, title: h.title };
 
+  // 못 잰 화면을 「잘림 0건」으로 세지 않는다 — 인증이 깨지면 전 화면이 /login 으로 튕겨도 OK 가 났다
+  const bounced = report.filter((r) => r.note === '로그인으로 튕김').map((r) => r.path);
+  if (bounced.length || !report.some((r) => !r.note)) {
+    console.error(`[table-clip] 측정 불가 — 측정 ${report.filter((r) => !r.note).length}화면 · 로그인 튕김 ${bounced.length}화면${bounced.length ? ': ' + bounced.slice(0, 6).join(', ') : ''}`);
+    process.exit(2);
+  }
+
   if (UPDATE) {
     fs.writeFileSync(BASELINE, JSON.stringify({
       base: BASE, width: WIDTH, minShort: MIN_SHORT, updated: new Date().toISOString().slice(0, 10),

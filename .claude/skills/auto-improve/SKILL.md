@@ -159,7 +159,7 @@ gh issue view {number} --comments
 - Issue 본문 = 기본 요구사항
 - 코멘트 = **수정/보완된 요구사항** (코멘트가 본문과 충돌하면 코멘트 우선)
 - 코멘트에 모호한 부분이 있으면 → Issue에 질문 코멘트 남기고 다음 Issue로
-- 구현 후 `npm run build && npm run e2e` 검증
+- 구현 후 `npm run verify && npm run test:calc` 검증(라우트·흐름 변경이면 `npm run journey:gate` 추가). ⛔`npm run e2e` 금지 — 기본 대상이 **prod** 이고 `crud-*.spec.ts` 쓰기 스위트가 prod DB 를 오염시킨다
 
 ### Step 4: 완료 처리
 ```bash

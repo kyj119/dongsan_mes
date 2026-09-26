@@ -120,6 +120,12 @@ function newestMtime(dir, exts) {
   const bad = lines.filter((l) => /^\s*(✗|→|△|  [^✓·■\s])/.test(l) || /^■/.test(l) && false)
   console.log(head)
   const fails = lines.filter((l) => /^\s*✗/.test(l)).length
+  // ✗ 가 0 인 것만으로 통과가 아니다 — spec 로드 오류·빈 스위트면 행 자체가 없어 ✗ 도 0 이다
+  const passes = lines.filter((l) => /^\s*✓/.test(l)).length
+  if (!fails && passes === 0) {
+    console.error('[cycle] 통과한 단계가 0 — 테스트가 실제로 돌지 않았다(spec 로드 오류·빈 스위트). 실행 로그 끝:\n' + runLog.split('\n').slice(-12).join('\n'))
+    process.exit(2)
+  }
   if (fails) {
     // 실패한 여정 블록만 출력(■ 제목 + ✗ + → 줄)
     let cur = ''; const out = []

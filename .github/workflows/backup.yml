@@ -59,15 +59,19 @@ jobs:
           echo "📁 Compressed: backup.sql.gz (${COMPRESSED_SIZE} bytes)"
 
           # 일별 백업 → R2
+          # ★--remote 필수 — wrangler 4 의 r2 object 는 기본이 **로컬(Miniflare)** 이라, 없으면
+          #   러너 디스크에만 쓰고 성공으로 끝난다(로그 「Resource location: local」 = 백업이 R2 에 없었다).
           echo "☁️ Uploading daily backup to R2..."
-          wrangler r2 object put "dongsan-backups/daily/${DATE}.sql.gz" \
+          set -o pipefail   # tee 가 wrangler 실패 코드를 삼키지 않게
+          wrangler r2 object put "dongsan-backups/daily/${DATE}.sql.gz" --remote \
             --file=backup.sql.gz \
-            --content-type="application/gzip"
+            --content-type="application/gzip" 2>&1 | tee put.log
+          if grep -q "Resource location: local" put.log; then echo "❌ R2 upload went to local storage"; exit 1; fi
 
           # 매월 1일이면 월별 백업도 저장
           if [ "$DAY" = "01" ]; then
             echo "📅 Monthly backup: ${MONTH}"
-            wrangler r2 object put "dongsan-backups/monthly/${MONTH}.sql.gz" \
+            wrangler r2 object put "dongsan-backups/monthly/${MONTH}.sql.gz" --remote \
               --file=backup.sql.gz \
               --content-type="application/gzip"
           fi

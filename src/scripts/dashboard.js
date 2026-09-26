@@ -166,7 +166,7 @@ async function loadDashboardStats() {
                 topClientsDiv.innerHTML = '<div class="ds-empty"><i class="fas fa-building"></i><p>거래처 데이터가 없습니다</p></div>';
             } else {
                 topClientsDiv.innerHTML = clients.map((client, index) =>
-                    '<div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition cursor-pointer" onclick="location.href=\'/ledger?search=' + encodeURIComponent(client.client_name) + '\'">' +
+                    '<div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition cursor-pointer" onclick="location.href=\'/ledger?search=' + encodeURIComponent(client.client_name).replace(/'/g, '%27') + '\'">' +   // encodeURIComponent 는 ' 를 안 바꾼다 — 거래처명으로 JS 문자열 탈출 방지
                     '<div class="flex items-center gap-3">' +
                     '<div class="text-2xl font-bold text-gray-400">' + (index + 1) + '</div>' +
                     '<div><div class="font-semibold">' + escapeHtml(client.client_name) + '</div>' +

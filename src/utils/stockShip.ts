@@ -90,6 +90,11 @@ export async function deductStockLinesOnShip(
   orderId: number,
   entityId: number
 ): Promise<void> {
+  // 취소·삭제된 주문은 차감하지 않는다 — 호출 경로가 6곳(bulk-ship·shipments POST/PATCH·카드 출고…)이고
+  //   그중 일부가 주문 상태를 안 봐서, 여기 한 곳에서 막는다(환원 짝이 없는 차감이 생기지 않게).
+  const ord = await db.prepare('SELECT status FROM orders WHERE id = ?').bind(orderId).first<{ status: string }>()
+  if (!ord || ord.status === 'CANCELLED' || ord.status === 'DELETED') return
+
   const lines = await selectShippableLines(db, orderId)
 
   for (const ln of lines) {

@@ -8,6 +8,7 @@ import { authMiddleware, requireRole } from '../../middleware/auth'
 import { entityFilter } from '../../utils/entityFilter'
 import { escapeCsvField } from '../../utils/csv'
 import { kstYmd } from '../../utils/kstDate'
+import { decryptPII } from '../../utils/crypto'
 
 const taxAgentRouter = new Hono<HonoEnv>()
 taxAgentRouter.use('/*', authMiddleware)
@@ -32,6 +33,17 @@ function maskRrn(rrn: string | null | undefined, unmask: boolean): string {
   const clean = rrn.replace(/\s/g, '')
   if (clean.length >= 8) return clean.slice(0, 8) + '******'
   return clean
+}
+
+/** 저장값은 암호문(aes:)이다 — 마스킹·원본 출력 전에 복호화(insuranceReports.ts 와 같은 규칙).
+ *  빠지면 ADMIN 은 암호문 전체를, 그 외는 'aes:xxxx******' 를 받는다. 복호 실패는 빈칸. */
+async function decryptRrns(rows: Array<{ resident_number: string | null }>, key: string | undefined): Promise<void> {
+  for (const r of rows) {
+    const raw = r.resident_number ? String(r.resident_number) : ''
+    if (!raw.startsWith('aes:')) continue
+    if (!key) throw new Error('PII encryption key (JWT_SECRET) is not configured')
+    try { r.resident_number = await decryptPII(raw, key) } catch { r.resident_number = null }
+  }
 }
 
 /** YYYY-MM → [firstDay, lastDay] */
@@ -87,6 +99,8 @@ taxAgentRouter.get('/tax-agent/changes', requireRole('ADMIN', 'MANAGER'), async 
        ORDER BY resignation_date, id`
     ).bind(first, last, ...ef.params).all<{ employee_code: string; name: string; resident_number: string | null; hire_date: string; resignation_date: string; department: string; position: string; base_salary: number }>()
 
+    await decryptRrns(hires, c.env.JWT_SECRET)
+    await decryptRrns(quits, c.env.JWT_SECRET)
     const rows: string[] = []
     rows.push([
       '구분', '사번', '성명', '주민등록번호', '입사일', '퇴사일',
@@ -147,6 +161,7 @@ taxAgentRouter.get('/tax-agent/payroll', requireRole('ADMIN', 'MANAGER'), async 
       bank_name: string | null; bank_account: string | null
     }>()
 
+    await decryptRrns(results, c.env.JWT_SECRET)
     const rows: string[] = []
     rows.push([
       '사번', '성명', '주민등록번호', '부서', '직급',
@@ -291,6 +306,7 @@ taxAgentRouter.get('/tax-agent/annual', requireRole('ADMIN', 'MANAGER'), async (
     // 실제로 해당 연도에 급여가 발생한 직원만 (연간합계 > 0)
     const aggList = Array.from(byEmp.values()).filter(a => a.totalSalary > 0)
 
+    await decryptRrns(aggList, c.env.JWT_SECRET)   // byEmp 가 이미 원본 값을 복사했으므로 집계 쪽을 푼다
     const rows: string[] = []
     rows.push([
       '사번', '성명', '주민등록번호', '부서', '직급',
@@ -373,6 +389,7 @@ taxAgentRouter.get('/tax-agent/roster', requireRole('ADMIN', 'MANAGER'), async (
       income_tax_table_option: string | null; insurance_grade: string | null; notes: string | null
     }>()
 
+    await decryptRrns(results, c.env.JWT_SECRET)
     const rows: string[] = []
     rows.push([
       '사번', '성명', '영문명', '주민등록번호',

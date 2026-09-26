@@ -36,7 +36,7 @@ forecastRouter.get('/order-forecast', async (c) => {
         i.category,
         strftime('%Y-%m', o.created_at) as month,
         COUNT(oi.id) as item_count,
-        COALESCE(SUM(oi.unit_price * oi.quantity), 0) as revenue
+        COALESCE(SUM(oi.amount), 0) as revenue   -- reports.ts 와 같은 정본(unit_price×수량은 단가 축을 무시)
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
       JOIN items i ON oi.item_id = i.id

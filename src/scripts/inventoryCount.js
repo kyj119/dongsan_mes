@@ -846,7 +846,8 @@ async function loadConsumption() {
 
 // 구역 드롭다운 — 실사 탭이 처음 열릴 때 1회 채운다 (inventoryTx.js 와 같은 방식)
 (function () {
-  document.addEventListener('DOMContentLoaded', function () {
+  // SPA 전환 시 DOMContentLoaded 는 다시 발화하지 않는다 — readyState 가드 필수(approvals.js 와 같은 형태).
+  function initConsZone() {
     var zone = document.getElementById('consZone');
     if (!zone) { console.warn('[inventoryCount] #consZone not found'); return; }
     axios.get('/api/storage-zones').then(function (r) {
@@ -857,7 +858,9 @@ async function loadConsumption() {
         zone.appendChild(o);
       });
     }).catch(function (e) { console.warn('[inventoryCount] storage-zones 로드 실패', e); });
-  });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initConsZone);
+  else initConsZone();
 })();
 
 // ===== 구역 실사: 0 줄 펼치기 · 품목 추가 (2026-09-04) =====

@@ -23,7 +23,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  forbidOnly: !!process.env.CI,
+  forbidOnly: true,   // 게이트다 — test.only 가 남으면 나머지 여정이 안 돌고도 통과로 셌다(2026-09-26 리뷰). 한 여정만 볼 땐 --grep
   timeout: 90_000,
   expect: { timeout: 10_000 },
   outputDir: '.journey/test-results',

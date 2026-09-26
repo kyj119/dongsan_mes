@@ -16,13 +16,20 @@ const WHOLE_TREE_DISCARD = /\bgit\s+(?:checkout|restore)\s+(?:\S+\s+)*?(?:\.|\.\
 // 되돌리기 어려운 명령 = 하드 차단 (Bash + PowerShell). 마이그/일상 명령 오탐 회피하도록 타이트.
 const HARD_BLOCK = [
   /\brm\s+-[a-z]*r/i, // 재귀 rm (-r/-rf/-fr) — 단일파일 rm -f는 허용
+  /\brm\s+(?:\S+\s+)*?--recursive\b/i, // 긴 옵션 철자(2026-09-26 리뷰: 짧은 철자만 잡고 있었다)
+  /\b(?:rmdir|rd)\s+(?:\S+\s+)*?\/s\b/i, // cmd 재귀 삭제
+  /\b(?:ri|del|rmdir|rd)\s+(?:\S+\s+)*?-r(?:ecurse)?\b/i, // PowerShell 별칭 재귀 삭제(ri x -r)
   /\bgit\s+clean\s+-[a-z]*f/i,
   /\bgit\s+branch\s+-D\b/i,
+  /\bgit\s+branch\s+(?:\S+\s+)*?--delete\s+(?:\S+\s+)*?--force\b|\bgit\s+branch\s+(?:\S+\s+)*?--force\s+(?:\S+\s+)*?--delete\b/i,
   // 브랜치 일괄 삭제 — 스크립트 경유도 동일 게이트(우회 방지).
   // 실행 형태(node …branch-cleanup / npm run branch:clean)만 매치 — 커밋 메시지 등 산문 오탐 방지.
   /(?:node\s+\S*branch-cleanup(?:\.cjs)?|branch:clean)[^\n]*--apply/i,
   WHOLE_TREE_DISCARD,
   /\bgit\s+push\b.*--force(?!-with-lease)/i,
+  /\bgit\s+push\b(?:\s+\S+)*?\s-[a-z]*f\b/i, // -f 짧은 철자
+  /\bgit\s+push\b(?:\s+\S+)*?\s\+\S/i, // +refspec = 강제
+  /\bgit\s+push\b.*--mirror\b/i,
   /\bRemove-Item\b.*-Recurse/i,
 ];
 

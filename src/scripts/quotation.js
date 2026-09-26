@@ -291,7 +291,7 @@ async function sendEmail() {
 }
 
 async function convertToOrder() {
-    if (!(await showConfirm('이 견적서를 주문으로 전환하시겠습니까?\n확정(CONFIRMED) 상태로 변경됩니다.'))) return;
+    if (!window.confirm('이 견적서를 주문으로 전환하시겠습니까?\n확정(CONFIRMED) 상태로 변경됩니다.')) return;   // 독립 HTML — shell.js(showConfirm·navigateTo) 없음
 
     try {
         var res = await axios.post('/api/orders/' + ORDER_ID + '/convert-to-order', {});
@@ -305,11 +305,11 @@ async function convertToOrder() {
                 showToastSuccess('주문으로 전환되었습니다.');
                 setTimeout(function() {
                     alert('자재 부족 경고 ' + res.data.material_warnings.length + '건\n\n' + warnLines.join('\n') + '\n\n주간 발주 분석에서 확인해주세요.');
-                    navigateTo('/orders');
+                    window.location.href = '/orders';
                 }, 300);
             } else {
                 showToastSuccess('주문으로 전환되었습니다. 주문 목록으로 이동합니다.');
-                setTimeout(function() { navigateTo('/orders'); }, 1500);
+                setTimeout(function() { window.location.href = '/orders'; }, 1500);
             }
         } else {
             showToastError('전환 실패: ' + (res.data.error || '알 수 없는 오류'));

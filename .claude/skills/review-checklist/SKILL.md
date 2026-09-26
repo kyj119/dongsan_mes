@@ -30,14 +30,10 @@ description: 동산기획 프로젝트 특화 코드 리뷰 체크리스트. 변
 
 추가: `getFullBounds` 함수의 Case 0~4 구조 확인.
 
-### 2. Source/Publish JSX 동기화 (JSX 변경 시)
+### 2. JSX 런타임 드리프트 (JSX 변경 시)
 
-3개 쌍 비교:
-- `IllustratorAutomat/ExtractGroups.jsx` vs `publish/ExtractGroups.jsx`
-- `IllustratorAutomat/ProcessOrderItem.jsx` vs `publish/ProcessOrderItem.jsx`
-- `IllustratorAutomat/PackGroups.jsx` vs `publish/PackGroups.jsx`
-
-불일치 시 어느 쪽이 최신인지 명시.
+`npm run audit:ia-jsx` 실행 — 드리프트면 exit 1. 런타임 정본은 `publish/` 가 **아니라** 실행 중 exe 폴더·`Z:` 배포본이다(CLAUDE.md §IA 5축).
+배포는 `npm run ia:deploy`(게이트 포함). 손으로 `publish/` 에 복사하지 않는다 — 그 폴더에는 이제 `SheetLayout.jsx` 하나뿐이다.
 
 ### 3. Program.cs 패턴 (C# 변경 시)
 

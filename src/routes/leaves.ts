@@ -644,12 +644,14 @@ leavesRouter.patch('/requests/:id/reject', requireRole('ADMIN', 'MANAGER'), asyn
       `SELECT employee_id, start_date, end_date FROM leave_requests WHERE id = ?${ef.clause}`
     ).bind(id, ...ef.params).first<{ employee_id: number; start_date: string; end_date: string }>()
 
-    await c.env.DB.prepare(`
+    const rjRes = await c.env.DB.prepare(`
       UPDATE leave_requests SET status = 'REJECTED', approved_by = ?, approved_at = CURRENT_TIMESTAMP, rejection_reason = ?
       WHERE id = ? AND status = 'PENDING'${ef.clause}
     `).bind(user?.id || null, body.reason || null, id, ...ef.params).run()
 
-    if (rj) {
+    // 정리는 실제로 반려됐을 때만 — clearLeaveAttendance 는 날짜 범위로 지우므로,
+    // 대상이 APPROVED(0행)인데 돌면 승인된 다른 휴가의 마킹까지 지운다.
+    if (rj && rjRes.meta?.changes === 1) {
       try { await clearLeaveAttendance(c.env.DB, { employeeId: rj.employee_id, startDate: rj.start_date, endDate: rj.end_date }) }
       catch (e) { console.warn('[leaves] clearLeaveAttendance (reject) failed:', e) }
     }
@@ -670,10 +672,10 @@ leavesRouter.delete('/requests/:id', requireRole('ADMIN', 'MANAGER'), async (c) 
     const dr = await c.env.DB.prepare(
       `SELECT employee_id, start_date, end_date FROM leave_requests WHERE id = ?${ef.clause}`
     ).bind(id, ...ef.params).first<{ employee_id: number; start_date: string; end_date: string }>()
-    await c.env.DB.prepare(
+    const drRes = await c.env.DB.prepare(
       `DELETE FROM leave_requests WHERE id = ? AND status = 'PENDING'${ef.clause}`
     ).bind(id, ...ef.params).run()
-    if (dr) {
+    if (dr && drRes.meta?.changes === 1) {   // 0행(APPROVED 등)이면 정리 금지 — reject 와 같은 이유
       try { await clearLeaveAttendance(c.env.DB, { employeeId: dr.employee_id, startDate: dr.start_date, endDate: dr.end_date }) }
       catch (e) { console.warn('[leaves] clearLeaveAttendance (delete) failed:', e) }
     }
@@ -1171,11 +1173,11 @@ leavesRouter.post('/apply-unused-allowance', requireRole('ADMIN', 'MANAGER'), as
     // #469: 해당 pay_period PENDING 급여행을 INNER JOIN 로드 → 주입과 동시에 저장 집계(총액/과세/공제/실지급) 재계산.
     const { results } = await c.env.DB.prepare(`
       SELECT e.id as employee_id, e.base_salary, e.position_allowance, e.overtime_daily_hours, e.overtime_work_days,
-        e.dependents_count, e.income_tax_table_option,
+        e.dependents_count, e.children_under_20_count, e.income_tax_table_option,
         (COALESCE(lb.accrued,0)+COALESCE(lb.granted_extra,0)+COALESCE(lb.carried_over,0)-COALESCE(lb.used,0)-COALESCE(lb.expired,0)) as remaining_annual,
         p.id as payroll_id, p.base_salary as p_base, p.overtime_pay, p.night_pay, p.holiday_pay,
         p.meal_allowance, p.transportation_allowance, p.other_allowance, p.bonus,
-        p.nontax_meal, p.nontax_transport, p.nontax_childcare, p.other_deduction,
+        p.nontax_meal, p.nontax_transport, p.nontax_childcare, p.other_deduction, p.absent_deduction,
         p.deduction_overrides
       FROM employees e
       LEFT JOIN (
@@ -1218,12 +1220,14 @@ leavesRouter.post('/apply-unused-allowance', requireRole('ADMIN', 'MANAGER'), as
       const total_salary = Number(r.p_base || 0) + Number(r.overtime_pay || 0) + Number(r.night_pay || 0) + Number(r.holiday_pay || 0)
         + Number(r.meal_allowance || 0) + Number(r.transportation_allowance || 0) + Number(r.other_allowance || 0)
         + unusedAllowance + Number(r.bonus || 0)
+        - Number((r as any).absent_deduction || 0)   // 0621 결근 차감 — sync 와 같은 산식(빠지면 결근분이 되돌아간다)
       const nontax = Number(r.nontax_meal || 0) + Number(r.nontax_transport || 0) + Number(r.nontax_childcare || 0)
       const taxable_pay = total_salary - nontax
       const empDef = empDefaultsMap.get(Number(r.employee_id))
       const d = await calcDeductions(c.env.DB, {
         taxablePay: taxable_pay,
         dependents: Math.max(1, Number(r.dependents_count || 1)),
+        childrenUnder20: Math.max(0, Number((r as any).children_under_20_count || 0)),
         taxOption: String(r.income_tax_table_option || '100'),
         year,
         payPeriod,
