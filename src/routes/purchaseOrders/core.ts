@@ -10,6 +10,7 @@ import type { PurchaseOrder, PurchaseOrderItem, ApiResponse, PaginatedResponse }
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { isSupervisor } from '../../utils/zoneAccess'
+import { poHeaderRecalcStmts } from '../../utils/poAmountSync'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
@@ -280,6 +281,19 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const dateStr = kstYmdCompact()
 
     const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', poEntityId, dateStr, { suffix: 'P' })
+
+    // ★발주 없이 입고(adhoc_source='RECEIVING') 라인은 **단가 미정(PENDING)** 이 기본이다(2026-09-27, C10).
+    //   입고 화면이 품목 검색의 `base_price`(=판매가)를 단가로 실어 보내, 매입 채무가 판매가로 잡혔다.
+    //   현장은 매입가를 모른다 — 단가 0·PENDING 으로 만들어 매입확정(purchaseInvoices)에서 실단가를 넣게 한다.
+    //   명시적으로 CONFIRMED 를 보낸 라인만 그 단가를 믿는다(사무실이 매입가를 알고 만든 경우).
+    if (data.adhoc_source === 'RECEIVING') {
+      for (const item of data.items) {
+        if (item.price_status !== 'CONFIRMED') {
+          item.price_status = 'PENDING'
+          item.unit_price = 0
+        }
+      }
+    }
 
     // 금액 계산
     let totalAmount = 0
@@ -743,23 +757,14 @@ poCoreRouter.patch('/:id/status', async (c) => {
       //   AP 는 final_amount 파생이라 그대로 두면 받지도 않은 분까지 채무로 남는다.
       //   부가세는 라인별(vat_included) — purchaseInvoices 매입확정과 같은 규칙. 할인은 유지하되 음수 방지.
       //   미지급 예정(cash_schedule)도 같은 금액으로 맞춘다 — 한 batch.
-      const RECV_SUB = `(SELECT COALESCE(SUM(received_quantity * unit_price), 0) FROM purchase_order_items WHERE po_id = ?)`
-      const RECV_VAT = `(SELECT COALESCE(SUM(CASE WHEN vat_included = 1 THEN ROUND(received_quantity * unit_price * 0.1) ELSE 0 END), 0) FROM purchase_order_items WHERE po_id = ?)`
+      //   ★축 = **합격 수량**(2026-09-27, C8) — 불합격분은 반품이라 채무가 아니다. 종전엔 received_quantity
+      //     (불합격 포함)로 셌다. 산식 정본 = utils/poAmountSync — 매입확정·입고 취소·자동 입고완료가 같은 함수를 쓴다
+      //     (따로 세면 뒤 단계가 앞 단계의 마감을 조용히 되돌린다 — C6 이 그 실물이었다).
       await c.env.DB.batch([
         c.env.DB.prepare(`
-          UPDATE purchase_orders SET
-            status = 'RECEIVED',
-            total_amount = ${RECV_SUB},
-            vat_amount = ${RECV_VAT},
-            final_amount = MAX(0, ${RECV_SUB} + ${RECV_VAT} - COALESCE(discount_amount, 0)),
-            updated_by = ?,
-            updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).bind(id, id, id, id, user?.id || 1, id),
-        c.env.DB.prepare(`
-          UPDATE cash_schedule SET amount = (SELECT final_amount FROM purchase_orders WHERE id = ?), updated_at = CURRENT_TIMESTAMP
-          WHERE source_type = 'PURCHASE' AND source_id = ? AND status IN ('PENDING', 'OVERDUE')
-        `).bind(id, id),
+          UPDATE purchase_orders SET status = 'RECEIVED', updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+        `).bind(user?.id || 1, id),
+        ...poHeaderRecalcStmts(c.env.DB, id, 'accepted', user?.id || 1),
       ])
     } else {
       await c.env.DB.prepare(`

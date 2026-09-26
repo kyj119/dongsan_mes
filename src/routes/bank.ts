@@ -2036,23 +2036,29 @@ async function applyBankTransaction(
         }
       }
     }
-    // 원자적 클레임 우선 — 돈 변동(지급 INSERT·잔액 차감) 전에 배타 소유권 확보. changes=0 이면 동시 요청 선점 → 409, 돈 변동 없음.
-    const claim = await db.prepare(`
-      UPDATE bank_transactions
-      SET match_status = 'APPLIED', matched_client_id = ?, matched_link_mode = 'CREATED',
-          matched_by = ?, matched_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND match_status != 'APPLIED'
-    `).bind(clientId, user?.id ?? 1, tx.id).run()
-    if (!claim.meta.changes) return { ok: false, error: '이미 처리된 은행거래입니다', status: 409 }
+    // ★클레임·지급 INSERT·링크를 **한 batch** 로(2026-09-27). 종전엔 클레임 → INSERT → 링크 UPDATE 가 각각 커밋이라
+    //   중간이 실패하면 「출금은 APPLIED 인데 지급 링크 없음」이 남았다(prod D7 5건·4,000만 — 지급행은 있고 링크만 없는 모양).
+    //   batch 는 한 트랜잭션이라 세 문장이 **같은 상태**를 본다:
+    //   ① INSERT 는 클레임과 **같은 조건**(아직 APPLIED 아님)일 때만 행을 만든다 — 동시 요청이 선점했으면 0행.
+    //   ② 클레임이 그 행 id 를 같은 문장에서 링크한다(reference_number=tx.id·같은 거래처의 최신 행 = 방금 넣은 행).
+    //   둘의 조건이 같으므로 「클레임만 됨」「INSERT 만 됨」이 생길 수 없다. changes=0 → 409, 돈 변동 없음.
     const results = await db.batch([
       db.prepare(`
         INSERT INTO purchase_payments (supplier_id, payment_date, amount, payment_method, reference_number, notes, created_by, entity_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(clientId, payDate, amount, opts.paymentMethod || '계좌이체', String(tx.id), opts.notes || defaultNotes, user?.id ?? 1, entityId),
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM bank_transactions WHERE id = ? AND match_status != 'APPLIED')
+      `).bind(clientId, payDate, amount, opts.paymentMethod || '계좌이체', String(tx.id), opts.notes || defaultNotes, user?.id ?? 1, entityId, tx.id),
       // AP 잔액은 파생(발주−지급−조정) — purchase_balance 캐시 갱신 제거(2026-08-31)
+      db.prepare(`
+        UPDATE bank_transactions
+        SET match_status = 'APPLIED', matched_client_id = ?, matched_link_mode = 'CREATED',
+            matched_purchase_payment_id = (SELECT MAX(id) FROM purchase_payments WHERE reference_number = ? AND supplier_id = ?),
+            matched_by = ?, matched_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND match_status != 'APPLIED'
+      `).bind(clientId, String(tx.id), clientId, user?.id ?? 1, tx.id),
     ])
+    if (!results[1].meta.changes) return { ok: false, error: '이미 처리된 은행거래입니다', status: 409 }
     const ppId = Number(results[0].meta.last_row_id)
-    await db.prepare('UPDATE bank_transactions SET matched_purchase_payment_id = ? WHERE id = ?').bind(ppId, tx.id).run()
     return { ok: true, mode: 'CREATED', ledgerId: ppId, message: '지급이 생성되었습니다' }
   }
 

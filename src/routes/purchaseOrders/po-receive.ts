@@ -17,6 +17,7 @@ import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
 import { kstYmd, kstYmdCompact, kstDate, kstDateOf } from '../../utils/kstDate'
 import { judgeBasePriceSync } from '../../utils/purchasePriceSync'
 import { judgeAvgCostFill, AVG_COST_FILL_SQL } from '../../utils/avgCostFill'
+import { poLineAccepted, poHeaderRecalcStmts, PO_LINE_ACCEPTED_QTY_SQL } from '../../utils/poAmountSync'
 
 const poReceiveRouter = new Hono<HonoEnv>()
 poReceiveRouter.use('/*', authMiddleware, requireAnyPagePermission('/purchase-orders', '/receiving'))
@@ -73,6 +74,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     //     아래 재고 쓰기가 쓰는 `getItemDefaultZones` 는 **행을 어디에 만들까**라 규칙이 다르다.
     const { results: poItems } = await c.env.DB.prepare(`
       SELECT poi.id, poi.item_id, poi.item_name, poi.quantity, poi.received_quantity, poi.unit_price,
+             poi.rejected_quantity, poi.price_status,
              poi.qty_is_estimate, poi.order_packs, poi.received_packs,
              poi.unit, poi.unit_factor,
              sz.id AS effective_zone_id
@@ -126,12 +128,15 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       //   발주 때 정확한 yd 를 모르고, 실측이 예상보다 **많이 나오는 것이 정상**이다.
       //   여기서 막으면 실측을 넣을 수 없어 담당자가 예상치를 그대로 확정해 버린다 —
       //   그러면 이 단계를 만든 이유가 사라진다.
+      // ★남은 수량 = 발주 − **합격분**(2026-09-27, C8). 종전엔 발주 − 수령(불합격 포함)이라, 10개 중 3개가
+      //   불합격(재입고 대기)이면 남은 수량이 0 이 되어 **대체품 3개를 받을 길이 없었고**, 라인은 불량품으로 「완료」됐다.
+      //   상한은 합격분에 건다 — 불합격분은 반품되므로 재고·채무 어디에도 안 남는다. 합격분이 발주를 넘는 것은 여전히 막는다.
       const isEstimate = Number(poItem.qty_is_estimate || 0) === 1
-      const remaining = Number(poItem.quantity) - Number(poItem.received_quantity)
-      if (!isEstimate && receiveQty > remaining) {
+      const remaining = Number(poItem.quantity) - poLineAccepted(poItem)
+      if (!isEstimate && acceptedQty > remaining + 0.0001) {
         return c.json({
           success: false,
-          error: `품목 '${poItem.item_name}': 입고 가능 수량(${remaining})을 초과했습니다. 요청: ${receiveQty}`
+          error: `품목 '${poItem.item_name}': 입고 가능 수량(${remaining})을 초과했습니다. 요청(합격): ${acceptedQty}`
         }, 400)
       }
       // ★구역 소유 게이트 (2026-09-08) — 종전엔 페이지 권한만 봤다. `/receiving` 을 OPERATOR 에게
@@ -264,8 +269,9 @@ poReceiveRouter.post('/:id/receive', async (c) => {
         const afterPacks = Number(pi.received_packs || 0) + (match ? match.receivePacks : 0)
         return afterPacks >= Number(pi.order_packs)
       }
-      const afterReceived = Number(pi.received_quantity || 0) + (match ? match.receiveQty : 0)
-      return afterReceived >= Number(pi.quantity)
+      // 일반 라인은 **합격분**으로 닫는다(C8) — 불합격분까지 세면 불량품으로 라인이 「완료」돼 대체품을 못 받았다.
+      const afterAccepted = poLineAccepted(pi) + (match ? match.acceptedQty : 0)
+      return afterAccepted >= Number(pi.quantity)
     })
     const prevStatus = po.status
     const newStatus = willAllReceived ? 'RECEIVED' : 'PARTIAL_RECEIVED'
@@ -333,7 +339,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
               line_status = CASE
                 WHEN qty_is_estimate = 1 AND COALESCE(order_packs, 0) > 0
                   THEN CASE WHEN (COALESCE(received_packs, 0) + ?) >= order_packs THEN 'RECEIVED' ELSE 'PARTIAL' END
-                WHEN (received_quantity + ?) >= quantity THEN 'RECEIVED'
+                WHEN (${PO_LINE_ACCEPTED_QTY_SQL} + ?) >= quantity THEN 'RECEIVED'
                 ELSE 'PARTIAL'
               END,
               received_by = ?,
@@ -341,7 +347,8 @@ poReceiveRouter.post('/:id/receive', async (c) => {
               updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `).bind(p.receiveQty, p.acceptedQty, p.rejectedQty, p.receivePacks,
-                p.receivePacks, p.receiveQty, user?.id || null, p.poItemId))
+                // 일반 라인 완료 = 기존 합격분 + 이번 합격분(C8 — 위 willAllReceived 와 같은 축)
+                p.receivePacks, p.acceptedQty, user?.id || null, p.poItemId))
 
         // inventory_receipt_items 라인 insert
         stmts.push(c.env.DB.prepare(`
@@ -415,6 +422,15 @@ poReceiveRouter.post('/:id/receive', async (c) => {
         UPDATE purchase_orders SET status = ?, receiving_locked_at = NULL, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
       `).bind(newStatus, user?.id || 1, id))
 
+      // ★예상수량(원단) 라인이 있는 발주가 입고완료되면 헤더를 **실측으로** 다시 센다(2026-09-27, C9).
+      //   예상수량 라인은 롤 수로 닫히는데 금액은 발주 때의 예상 yd 로 남아, AP 가 영구히 예상치였다.
+      //   축 = 합격 수량(부분입고 마감과 같은 산식 — utils/poAmountSync). 위 라인 UPDATE 뒤라 이번 입고분을 본다.
+      //   일반 라인은 입고완료 시 합격분 = 발주수량이라 값이 안 바뀐다. 미지급 예정(PENDING·OVERDUE)도 같은 batch.
+      const hasEstimateLine = (poItems as PoItemRow[]).some((pi) => Number(pi.qty_is_estimate || 0) === 1)
+      if (newStatus === 'RECEIVED' && hasEstimateLine) {
+        stmts.push(...poHeaderRecalcStmts(c.env.DB, id, 'accepted', user?.id || 1))
+      }
+
       // 상태 변경 시만 이력
       if (newStatus !== prevStatus) {
         stmts.push(c.env.DB.prepare(`
@@ -445,6 +461,9 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     try {
       for (const p of perItemPrep) {
         if (!p.itemId || p.unitPrice <= 0) continue
+        // 단가 미정(PENDING) 라인의 단가는 매입가가 아니다(C10 — 발주 없이 입고는 0/PENDING 으로 만든다).
+        //   매입처 단가·base_price 학습은 매입확정(purchaseInvoices /confirm)이 실단가로 한다.
+        if (poItemMap.get(p.poItemId)?.price_status === 'PENDING') continue
 
         // ① client_item_prices upsert (매입처 단가)
         if (po.supplier_id) {

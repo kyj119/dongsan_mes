@@ -9,7 +9,7 @@ import type { HonoEnv } from '../../types/env'
 import type { PurchaseOrder } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
-import { getEntityId, entityFilter } from '../../utils/entityFilter'
+import { getWriteEntityId, entityFilter } from '../../utils/entityFilter'
 import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
 import { kstYmdCompact, kstDate } from '../../utils/kstDate'
 import { backfillPoLineFactors } from '../../utils/itemUnits'
@@ -29,9 +29,9 @@ poSpecialRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => 
     const po = await c.env.DB.prepare(`
       SELECT id, po_number, supplier_id, expected_date,
              total_amount, vat_amount, discount_amount, final_amount,
-             notes, internal_notes
+             notes, internal_notes, entity_id
       FROM purchase_orders WHERE id = ?${ef.clause}
-    `).bind(id, ...ef.params).first<PurchaseOrder>()
+    `).bind(id, ...ef.params).first<PurchaseOrder & { entity_id?: number | null }>()
 
     if (!po) {
       return c.json({ success: false, error: 'Purchase order not found' }, 404)
@@ -42,11 +42,30 @@ poSpecialRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => 
       FROM purchase_order_items WHERE po_id = ? ORDER BY sort_order ASC, id ASC
     `).bind(id).all()
 
+    // 헤더 금액은 **라인에서 다시 센다**(2026-09-27, 재발주와 같은 규칙) — 원본 헤더를 복사하면 부분입고 마감으로
+    //   입고분까지 줄어든 금액이 새 발주로 옮겨 가, 라인은 전량인데 헤더·AP 는 입고분만 잡혔다.
+    //   부가세는 라인별 원 단위, 할인은 음수 방지(core.ts 생성·마감과 같은 산식).
+    let cpTotal = 0, cpVat = 0
+    for (const it of (originalItems || []) as any[]) {
+      const amt = (Number(it.unit_price) || 0) * (Number(it.quantity) || 0)
+      cpTotal += amt
+      if (Number(it.vat_included) !== 0) cpVat += Math.round(amt * 0.1)
+    }
+    const cpDiscount = Math.min(Number(po.discount_amount) || 0, cpTotal + cpVat)
+    const cpFinal = cpTotal + cpVat - cpDiscount
+
+    // 법인 = **원본 발주의 법인**(2026-09-27). 전체 모드(0)에서 `|| 1` 로 떨어지면 타법인 발주가 동산 AP 로 복사됐다.
+    //   원본 법인이 비어 있는 옛 행만 세션 법인 — 전체 모드면 거부. 번호 E{eid} 도 같은 값.
+    const cpEntityId = Number(po.entity_id) || getWriteEntityId(c)
+    if (cpEntityId == null) {
+      return c.json({ success: false, error: '전체 모드에서는 발주를 만들 수 없습니다. 상단에서 법인을 선택하세요.' }, 400)
+    }
+
     // 새 발주번호 생성
     const today = new Date()
     const dateStr = kstYmdCompact()
 
-    const newPoNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', getEntityId(c) || 1, dateStr, { suffix: 'P' })
+    const newPoNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', cpEntityId, dateStr, { suffix: 'P' })
 
     // 새 발주 INSERT (DRAFT 상태, balance 미반영)
     const newPoResult = await c.env.DB.prepare(`
@@ -61,14 +80,14 @@ poSpecialRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => 
       po.supplier_id,
       today.toISOString().split('T')[0],
       po.expected_date || null,
-      po.total_amount,
-      po.vat_amount,
-      po.discount_amount,
-      po.final_amount,
+      cpTotal,
+      cpVat,
+      cpDiscount,
+      cpFinal,
       po.notes ? `[복사] ${po.notes}` : null,
       po.internal_notes || null,
       user?.id || 1,
-      getEntityId(c) || 1
+      cpEntityId
     ).run()
 
     const newPoId = newPoResult.meta.last_row_id
@@ -90,7 +109,8 @@ poSpecialRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => 
         item.quantity,
         item.unit || 'EA',
         item.unit_price || 0,
-        item.amount || 0,
+        // 라인 금액도 발주 수량으로 다시 센다 — 원본 라인은 매입확정이 입고분으로 줄였을 수 있다(헤더와 같은 이유)
+        (Number(item.unit_price) || 0) * (Number(item.quantity) || 0),
         item.vat_included,
         item.sort_order || 0,
         item.notes || null
@@ -167,7 +187,11 @@ poSpecialRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) 
     //   타법인이 같은 날 같은 번호를 만들어 UNIQUE 500. 정규 경로(core.ts POST)와 같은 E{eid} 내장 채번.
     const today = kstYmdCompact()
     // 법인 = 원본 발주의 법인(전체 모드에서 `|| 1` 로 떨어지면 타법인 발주가 동산 AP 로 재발주된다). 번호 E{eid} 도 같은 값.
-    const reEntityId = Number(originalPo.entity_id) || getEntityId(c) || 1
+    //   원본 법인이 비어 있는 옛 행만 세션 법인 — 전체 모드면 거부(2026-09-27, `|| 1` 제거).
+    const reEntityId = Number(originalPo.entity_id) || getWriteEntityId(c)
+    if (reEntityId == null) {
+      return c.json({ success: false, error: '전체 모드에서는 발주를 만들 수 없습니다. 상단에서 법인을 선택하세요.' }, 400)
+    }
     const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', reEntityId, today, { suffix: 'P' })
 
     // 새 PO 생성
@@ -206,7 +230,9 @@ poSpecialRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) 
         VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?, ?)
       `).bind(
         newPoId, item.item_id, item.item_name, item.category_name, item.quantity,
-        item.unit, item.unit_price, item.amount, item.vat_included, item.sort_order, item.notes
+        // 라인 금액 = 단가 × 발주수량(헤더와 같은 축) — 원본 라인은 매입확정이 입고분으로 줄였을 수 있다(2026-09-27)
+        item.unit, item.unit_price, (Number(item.unit_price) || 0) * (Number(item.quantity) || 0),
+        item.vat_included, item.sort_order, item.notes
       ).run()
     }
 
@@ -279,9 +305,15 @@ poSpecialRouter.post('/quick', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const canAutoApprove = autoApproveEnabled && finalAmount <= autoApproveLimit
     const status = canAutoApprove ? 'CONFIRMED' : 'DRAFT'
 
+    // 법인 = 세션 법인. 전체 모드(0)에서 `|| 1` 로 떨어지면 동산(1) AP 로 발주가 생겼다(2026-09-27) → 거부.
+    const quickEntityId = getWriteEntityId(c)
+    if (quickEntityId == null) {
+      return c.json({ success: false, error: '전체 모드에서는 발주를 만들 수 없습니다. 상단에서 법인을 선택하세요.' }, 400)
+    }
+
     // PO 번호 생성 — 재발주와 같은 이유로 E{eid} 내장 채번(전역 UNIQUE 정합)
     const today = kstYmdCompact()
-    const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', getEntityId(c) || 1, today, { suffix: 'P' })
+    const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', quickEntityId, today, { suffix: 'P' })
 
     // PO 생성
     const result = await c.env.DB.prepare(`
@@ -296,7 +328,7 @@ poSpecialRouter.post('/quick', requireRole('ADMIN', 'MANAGER'), async (c) => {
       body.expected_date || null, body.delivery_location || null,
       totalAmount, vatAmount, finalAmount,
       body.notes || null, canAutoApprove ? '빠른 발주 (자동승인)' : '빠른 발주',
-      user.id, user.id, getEntityId(c) || 1,
+      user.id, user.id, quickEntityId,
       ...(canAutoApprove ? [user.id] : [])
     ).run()
 

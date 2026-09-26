@@ -543,10 +543,12 @@ async function adhocCreate(supplierId, supplierName, item) {
       status: 'CONFIRMED',            // 바로 입고해야 하므로 확정 상태로 만든다
       adhoc_source: 'RECEIVING',      // 사후 생성 표시 — Phase 3 검수 큐가 이걸로 센다
       notes: '입고 화면에서 사후 생성 (' + supplierName + ')',
+      // 단가는 **미정(PENDING)** 으로 보낸다(2026-09-27) — 품목 검색의 price 는 base_price(판매가)라
+      //   그대로 실으면 매입 채무가 판매가로 잡혔다. 실단가는 사무실이 매입확정에서 넣는다(서버도 같은 규칙을 강제한다).
       items: [{
         item_id: item.id, item_name: item.name, quantity: n,
-        unit: item.unit || 'EA', unit_price: parseFloat(item.price) || 0,
-        amount: n * (parseFloat(item.price) || 0),
+        unit: item.unit || 'EA', unit_price: 0, price_status: 'PENDING',
+        amount: 0,
       }],
     })
     var poId = res.data && res.data.data && (res.data.data.po_id || res.data.data.id)

@@ -6,7 +6,8 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import type { PurchaseOrder, PurchaseOrderItem, ApiResponse, PaginatedResponse } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
-import { getEntityId } from '../../utils/entityFilter'
+import { getWriteEntityId } from '../../utils/entityFilter'
+import { isSupervisor } from '../../utils/zoneAccess'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
 import { kstYmdCompact } from '../../utils/kstDate'
 import { backfillPoLineFactors } from '../../utils/itemUnits'
@@ -76,7 +77,8 @@ templatesRouter.get('/templates/:id', async (c) => {
 // ============================================================================
 // POST /templates - 템플릿 저장
 // ============================================================================
-templatesRouter.post('/templates', async (c) => {
+// 템플릿 저장·삭제는 관리자만(2026-09-27, C11) — 라우터 공통 가드와 별개로 라우트에 명시한다(공통 가드가 좁혀져도 남도록).
+templatesRouter.post('/templates', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const user = c.get('user')
     const { name, supplier_id, notes, items } = await c.req.json()
@@ -134,7 +136,7 @@ templatesRouter.post('/templates', async (c) => {
 // ============================================================================
 // DELETE /templates/:id - 템플릿 삭제 (soft delete)
 // ============================================================================
-templatesRouter.delete('/templates/:id', async (c) => {
+templatesRouter.delete('/templates/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
 
@@ -192,10 +194,17 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
       return c.json({ success: false, error: '템플릿에 품목이 없습니다.' }, 400)
     }
 
+    // 법인 = 세션 법인(템플릿엔 법인 칸이 없다). 전체 모드(0)에서 `|| 1` 로 떨어지면 동산(1) AP 로 발주가 생겼다(2026-09-27).
+    //   채번(E{eid})과 행 entity_id 는 같은 값이어야 한다.
+    const poEntityId = getWriteEntityId(c)
+    if (poEntityId == null) {
+      return c.json({ success: false, error: '전체 모드에서는 발주를 만들 수 없습니다. 상단에서 법인을 선택하세요.' }, 400)
+    }
+
     // 발주번호 생성
     const today = new Date()
     const dateStr = kstYmdCompact()
-    const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', getEntityId(c) || 1, dateStr, { suffix: 'P' })
+    const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', poEntityId, dateStr, { suffix: 'P' })
 
     // 품목별 수량/단가 오버라이드 적용 + 금액 계산
     const overrides = item_overrides || {}
@@ -215,7 +224,9 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
 
     const finalAmount = totalAmount + vatAmount
 
-    const initialStatus = reqStatus === 'CONFIRMED' ? 'CONFIRMED' : 'DRAFT'
+    // 확정 생성은 관리자만(2026-09-27, C11) — 비관리자는 초안(DRAFT)으로만 만든다. 확정 발주는 곧 AP 채무다
+    //   (core.ts PATCH 가 비관리자에게 「대기 → 확정」을 담당 구역 확인 뒤에만 여는 것과 같은 선).
+    const initialStatus = (reqStatus === 'CONFIRMED' && isSupervisor(c)) ? 'CONFIRMED' : 'DRAFT'
     const nowIso = new Date().toISOString()
 
     const poResult = await c.env.DB.prepare(`
@@ -235,7 +246,7 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
       totalAmount, vatAmount, finalAmount,
       notes || (template.notes ? `[템플릿: ${template.name}] ${template.notes}` : `[템플릿: ${template.name}]`),
       user?.id || 1,
-      getEntityId(c) || 1,
+      poEntityId,
       initialStatus === 'CONFIRMED' ? nowIso : null,
       initialStatus === 'CONFIRMED' ? (user?.id || 1) : null
     ).run()

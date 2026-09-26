@@ -550,6 +550,20 @@ apRouter.put('/purchase-payment/:id', requireEditOrRole('/ledger', 'MANAGER'), a
       return c.json({ success: false, error: '지급액은 0보다 커야 합니다' }, 400)
     }
 
+    // ★통장 출금과 연결된 지급은 금액·일자를 못 바꾼다(2026-09-27) — 통장 출금액은 은행이 정한 사실이라,
+    //   지급만 고치면 통장↔지급 대사가 조용히 어긋난다(AP 파생은 지급 행을 믿는다). 바꿔야 하면 연결을 먼저 푼다.
+    //   비고·결제수단처럼 돈이 아닌 칸은 그대로 허용한다.
+    const amountChanged = Math.abs(Number(newAmount) - Number(existing.amount)) >= 0.01
+    const dateChanged = !!body.payment_date && body.payment_date !== existing.payment_date
+    if (amountChanged || dateChanged) {
+      const bankLinked = await c.env.DB.prepare(
+        'SELECT id FROM bank_transactions WHERE matched_purchase_payment_id = ? LIMIT 1'
+      ).bind(id).first()
+      if (bankLinked) {
+        return c.json({ success: false, error: '통장과 연결된 지급은 금액·일자를 바꿀 수 없습니다. 연결을 해제한 뒤 수정하세요.' }, 400)
+      }
+    }
+
     // Calculate balance adjustment
     const amountDiff = newAmount - existing.amount
 

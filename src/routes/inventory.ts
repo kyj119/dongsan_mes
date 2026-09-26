@@ -12,6 +12,7 @@ import { resolveStockUnit } from '../utils/rollConsumption'
 import { packFactor } from '../utils/unitConvert'
 import { judgeAvgCostFill, AVG_COST_FILL_SQL } from '../utils/avgCostFill'
 import { escapeCsvField } from '../utils/csv'
+import { poHeaderRecalcStmts } from '../utils/poAmountSync'
 import { TX_TYPE_LABELS, TX_REF_LABELS, TX_REASON_LABELS } from '../constants/inventoryTx'
 
 const inventoryRouter = new Hono<HonoEnv>()
@@ -778,12 +779,13 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
           const po = await c.env.DB.prepare(`SELECT status FROM purchase_orders WHERE id = ?`)
             .bind(poId).first<{ status: string }>()
           const { results: allPoItems } = await c.env.DB.prepare(
-            `SELECT id, quantity, received_quantity, qty_is_estimate, order_packs, received_packs FROM purchase_order_items WHERE po_id = ?`
+            `SELECT id, quantity, received_quantity, rejected_quantity, qty_is_estimate, order_packs, received_packs FROM purchase_order_items WHERE po_id = ?`
           ).bind(poId).all()
 
           const rbMap: Record<number, number> = {}
+          const rbRej: Record<number, number> = {}
           const rbPacks: Record<number, number> = {}
-          for (const r of rollbackItems) { rbMap[r.poItemId] = r.recv; rbPacks[r.poItemId] = r.packs }
+          for (const r of rollbackItems) { rbMap[r.poItemId] = r.recv; rbRej[r.poItemId] = r.rej; rbPacks[r.poItemId] = r.packs }
 
           // 롤백 후 received_quantity 기준 PO status 재산정 (정방향 willAllReceived 대칭)
           let allReceived = (allPoItems || []).length > 0
@@ -791,11 +793,14 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
           for (const pi of (allPoItems || [])) {
             const qty = Number(pi.quantity || 0)
             const newRecv = Math.max(0, Number(pi.received_quantity || 0) - (rbMap[pi.id as number] || 0))
+            // 완료 판정은 **합격분** — 정방향(po-receive)과 같은 축(2026-09-27, C8). 합격 = 수령 − 불합격.
+            const newRej = Math.max(0, Number(pi.rejected_quantity || 0) - (rbRej[pi.id as number] || 0))
+            const newAcc = Math.max(0, newRecv - newRej)
             // 라인 line_status 롤백(아래 UPDATE)과 같은 축 — 예상수량 라인은 롤 수로 닫혔는지 본다
             if (Number(pi.qty_is_estimate || 0) === 1 && Number(pi.order_packs || 0) > 0) {
               const newPacks = Math.max(0, Number(pi.received_packs || 0) - (rbPacks[pi.id as number] || 0))
               if (newPacks < Number(pi.order_packs)) allReceived = false
-            } else if (!(qty > 0 && newRecv >= qty)) allReceived = false
+            } else if (!(qty > 0 && newAcc >= qty)) allReceived = false
             if (newRecv > 0) anyReceived = true
           }
           const newPoStatus = allReceived ? 'RECEIVED' : anyReceived ? 'PARTIAL_RECEIVED' : 'CONFIRMED'
@@ -869,12 +874,12 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
                             WHEN MAX(0, COALESCE(received_packs, 0) - ?) >= order_packs THEN 'RECEIVED'
                             WHEN MAX(0, COALESCE(received_packs, 0) - ?) > 0 THEN 'PARTIAL'
                             ELSE 'PENDING' END
-                        WHEN MAX(0, received_quantity - ?) >= quantity AND quantity > 0 THEN 'RECEIVED'
+                        WHEN MAX(0, MAX(0, received_quantity - ?) - MAX(0, COALESCE(rejected_quantity, 0) - ?)) >= quantity AND quantity > 0 THEN 'RECEIVED'
                         WHEN MAX(0, received_quantity - ?) > 0 THEN 'PARTIAL'
                         ELSE 'PENDING' END,
                       updated_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND po_id = ?`
-            ).bind(r.recv, r.acc, r.rej, r.packs, r.packs, r.packs, r.recv, r.recv, r.poItemId, poId)
+            ).bind(r.recv, r.acc, r.rej, r.packs, r.packs, r.packs, r.recv, r.rej, r.recv, r.poItemId, poId)
           )
         }
         // PO 헤더 status 재산정 (사전계산값)
@@ -882,6 +887,14 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
           c.env.DB.prepare(`UPDATE purchase_orders SET status = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
             .bind(poRollback.newStatus, c.get('user')?.id || 1, poId)
         )
+        // ★헤더 금액도 되돌린다(2026-09-27, C7). 부분입고 마감·예상수량 실측이 헤더를 **입고분**으로 줄여 놓았는데
+        //   입고를 취소해 발주가 다시 열리면(CONFIRMED·PARTIAL_RECEIVED) 남은 수량을 받을 발주인데도 금액은
+        //   줄어든 채 남았다 → AP 가 과소. 열린 발주의 정상 규칙 = 발주 수량(`ordered`),
+        //   여전히 RECEIVED 면 입고완료 규칙(`accepted`). 위 라인 UPDATE 뒤라 롤백된 수량을 본다.
+        //   미지급 예정은 아직 안 치른 행(PENDING·OVERDUE)만 맞춘다 — 같은 batch.
+        ops.push(...poHeaderRecalcStmts(
+          c.env.DB, poId as number, poRollback.newStatus === 'RECEIVED' ? 'accepted' : 'ordered', c.get('user')?.id || 1
+        ))
         if (poRollback.newStatus !== poRollback.prevStatus && poRollback.prevStatus) {
           ops.push(
             c.env.DB.prepare(

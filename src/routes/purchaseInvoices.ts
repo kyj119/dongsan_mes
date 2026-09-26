@@ -6,6 +6,7 @@ import { packFactor } from '../utils/unitConvert'
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 import { kstYmd } from '../utils/kstDate'
 import { judgeBasePriceSync } from '../utils/purchasePriceSync'
+import { poHeaderRecalcStmts, poLineQtySql, poLineAccepted, type PoAmountBasis } from '../utils/poAmountSync'
 
 const purchaseInvoices = new Hono<HonoEnv>()
 purchaseInvoices.use('*', authMiddleware)
@@ -118,11 +119,18 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
 
   const ef = entityFilter(c, 'po')
   const po = await c.env.DB.prepare(
-    `SELECT po.id, po.po_number, po.supplier_id, COALESCE(po.discount_amount, 0) AS discount_amount FROM purchase_orders po WHERE po.id = ?${ef.clause}`
-  ).bind(po_id, ...ef.params).first<{ id: number; po_number: string; supplier_id: number; discount_amount: number }>()
+    `SELECT po.id, po.po_number, po.supplier_id, po.status, po.entity_id, COALESCE(po.discount_amount, 0) AS discount_amount FROM purchase_orders po WHERE po.id = ?${ef.clause}`
+  ).bind(po_id, ...ef.params).first<{ id: number; po_number: string; supplier_id: number; status: string; entity_id: number | null; discount_amount: number }>()
   if (!po) return c.json({ success: false, error: 'PO를 찾을 수 없습니다.' }, 404)
 
-  const eid = getEntityId(c) || 1
+  // 인보이스·지급예정의 법인 = **발주의 법인**(2026-09-27). 세션 법인(`|| 1`)으로 쓰면 전체모드에서
+  //   타법인 발주의 매입 문서가 동산(1) 장부로 떨어진다. entity_id NULL 옛 행은 COALESCE(entity_id,1) 규약.
+  const eid = Number(po.entity_id) || 1
+  // ★금액 축(2026-09-27, C6) — 입고가 끝난(RECEIVED) 발주는 **합격 수량**, 열린 발주는 발주 수량.
+  //   종전엔 `단가 × 발주수량` 으로 라인·헤더를 다시 세서, 부분입고 마감(입고분으로 줄인 금액)과
+  //   예상수량(원단) 실측을 **매입확정이 되돌렸다**. 규칙 정본 = utils/poAmountSync(마감과 같은 함수).
+  const basis: PoAmountBasis = po.status === 'RECEIVED' ? 'accepted' : 'ordered'
+  const lineQtySql = poLineQtySql(basis)
   const invoiceItems: Array<{ po_item_id: number; item_id: number | null; quantity: number; unit_price: number; amount: number }> = []
 
   // 1) 품목별: poi 단가·price_status 갱신 + 입고라인/원장 valuation 정정
@@ -136,9 +144,9 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
   const poItemIds = (items as any[]).map((it: any) => it.po_item_id)
   const poiPlaceholders = poItemIds.map(() => '?').join(',')
   const { results: poiRows } = await c.env.DB.prepare(
-    `SELECT id, item_id, quantity, received_quantity FROM purchase_order_items WHERE po_id = ? AND id IN (${poiPlaceholders})`
-  ).bind(po_id, ...poItemIds).all<{ id: number; item_id: number | null; quantity: number; received_quantity: number }>()
-  const poiMap = new Map<number, { id: number; item_id: number | null; quantity: number; received_quantity: number }>()
+    `SELECT id, item_id, quantity, received_quantity, rejected_quantity FROM purchase_order_items WHERE po_id = ? AND id IN (${poiPlaceholders})`
+  ).bind(po_id, ...poItemIds).all<{ id: number; item_id: number | null; quantity: number; received_quantity: number; rejected_quantity: number | null }>()
+  const poiMap = new Map<number, { id: number; item_id: number | null; quantity: number; received_quantity: number; rejected_quantity: number | null }>()
   for (const r of poiRows) poiMap.set(r.id, r)
 
   // 원장(inventory_transactions)은 **base 단위**다(po-receive: quantity=×pack, unit_price=÷pack). 관리단가를 그대로
@@ -160,11 +168,12 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
     const price = Number(it.unit_price)
     const poi = poiMap.get(it.po_item_id)
     if (!poi) continue
-    const recvQty = poi.received_quantity || poi.quantity || 0
+    // 인보이스 수량 = 합격분(불합격은 반품이라 청구 대상이 아니다). 입고 전 라인은 종전대로 발주 수량.
+    const recvQty = poi.received_quantity ? poLineAccepted(poi) : (poi.quantity || 0)
 
-    // poi: 발주 단가 확정
+    // poi: 발주 단가 확정 — 라인 금액도 위 축(basis)으로 센다(헤더 재계산과 같은 수량)
     confirmStmts.push(c.env.DB.prepare(
-      `UPDATE purchase_order_items SET unit_price = ?, amount = ? * quantity, price_status = 'CONFIRMED', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+      `UPDATE purchase_order_items SET unit_price = ?, amount = ? * ${lineQtySql}, price_status = 'CONFIRMED', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
     ).bind(price, price, poi.id))
 
     // 입고 라인 valuation 정정
@@ -229,25 +238,20 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
     }
   } catch (e) { console.error('confirm price upsert error:', e) }
 
-  // 3) PO 총액 재계산
-  const totals = await c.env.DB.prepare(`
-    SELECT COALESCE(SUM(amount), 0) as subtotal,
-           COALESCE(SUM(CASE WHEN vat_included = 1 THEN ROUND(amount * 0.1) ELSE 0 END), 0) as vat
-    FROM purchase_order_items WHERE po_id = ?
-  `).bind(po_id).first<{ subtotal: number; vat: number }>()
-  const subtotal = totals?.subtotal || 0
-  const vat = totals?.vat || 0
-  // 발주 저장(core.ts)과 같은 산식 — 할인을 빼지 않으면 확정 때마다 할인이 사라진다
-  const discount = Number(po.discount_amount || 0)
-  await c.env.DB.prepare(
-    `UPDATE purchase_orders SET total_amount = ?, vat_amount = ?, final_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-  ).bind(subtotal, vat, subtotal + vat - discount, po_id).run()
+  // 3) PO 총액 재계산 — 부분입고 마감과 **같은 함수**(basis 축, 라인별 ROUND 부가세, 할인 음수 방지).
+  //   미지급 예정의 금액 동기화(PENDING·OVERDUE 만)도 이 batch 에 들어 있다.
+  await c.env.DB.batch(poHeaderRecalcStmts(c.env.DB, po_id, basis, user?.id || null))
+  const totals = await c.env.DB.prepare(
+    `SELECT COALESCE(total_amount, 0) AS subtotal, COALESCE(vat_amount, 0) AS vat, COALESCE(final_amount, 0) AS final FROM purchase_orders WHERE id = ?`
+  ).bind(po_id).first<{ subtotal: number; vat: number; final: number }>()
+  const subtotal = Number(totals?.subtotal) || 0
+  const vat = Number(totals?.vat) || 0
 
   // 3.5) 지급예정(cash_schedule OUT) 물질화 — 매입확정 시점 금액으로 UPSERT
   //   PURCHASE OUT은 cashflowEngine에서 물질화 전용(온더플라이 미계산)이라 이중계산 없음.
   //   auto-generate와 동일하게 source_id=po_id로 dedup → 단가미정 발주의 잠정 금액을 확정 금액으로 정정.
   try {
-    const payable = subtotal + vat - discount
+    const payable = Number(totals?.final) || 0
     let dueStr: string | null = due_date || null
     if (!dueStr) {
       // 공급사 결제조건(MONTHLY 월말/이월결제 포함)을 반영 — 매출측과 대칭 (H1a)
@@ -268,12 +272,15 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
       })
     }
     const desc = `매입확정 지급예정 (발주 ${po.po_number})`
+    // ★아직 안 치른 예정행(PENDING·OVERDUE)만 고친다(2026-09-27). 종전엔 상태를 안 봐서 이미 지급 완료(PAID)된
+    //   예정행의 금액·일자까지 덮어써 자금 이력이 바뀌었다. 치른 행이 있으면 새로 만들지도 않는다(이중 예정 방지).
     const existing = await c.env.DB.prepare(
-      `SELECT id FROM cash_schedule WHERE source_type = 'PURCHASE' AND source_id = ?`
-    ).bind(po_id).first<{ id: number }>()
+      `SELECT id, status FROM cash_schedule WHERE source_type = 'PURCHASE' AND source_id = ? ORDER BY id DESC LIMIT 1`
+    ).bind(po_id).first<{ id: number; status: string | null }>()
     if (existing) {
       await c.env.DB.prepare(
-        `UPDATE cash_schedule SET amount = ?, schedule_date = ?, client_id = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+        `UPDATE cash_schedule SET amount = ?, schedule_date = ?, client_id = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND status IN ('PENDING', 'OVERDUE')`
       ).bind(payable, dueStr, po.supplier_id, desc, existing.id).run()
     } else {
       await c.env.DB.prepare(
@@ -288,14 +295,16 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
   const invVat = Math.round(invSubtotal * 0.1)
   const invTotal = invSubtotal + invVat
   const invoiceNumber = `PI-${po.po_number}-${String(Date.now()).slice(-4)}`
-  const matchStatus = Math.abs(invTotal - (subtotal + vat)) <= Math.max(invTotal, subtotal + vat) * 0.01 ? 'MATCHED' : 'PRICE_VARIANCE'
+  // 3-way 판정은 **공급가끼리** 비교한다(2026-09-27). 종전엔 인보이스(전 라인 일괄 10%)와 발주(라인별 vat_included)의
+  //   부가세 포함액을 맞대, 면세 라인이 섞이면 금액이 같아도 PRICE_VARIANCE 가 떴다. 발주 쪽은 위에서 basis 로 다시 센 값이다.
+  const matchStatus = Math.abs(invSubtotal - subtotal) <= Math.max(invSubtotal, subtotal) * 0.01 ? 'MATCHED' : 'PRICE_VARIANCE'
 
   const result = await c.env.DB.prepare(`
     INSERT INTO purchase_invoices (invoice_number, supplier_id, po_id, invoice_date, due_date, subtotal, vat_amount, total_amount, match_status, variance_amount, notes, entity_id, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     invoiceNumber, po.supplier_id, po_id, invoice_date || kstYmd(), due_date || null,
-    invSubtotal, invVat, invTotal, matchStatus, invTotal - (subtotal + vat), notes || null, eid, user?.id || null
+    invSubtotal, invVat, invTotal, matchStatus, invSubtotal - subtotal, notes || null, eid, user?.id || null
   ).run()
   const invoiceId = result.meta.last_row_id as number
 
@@ -371,34 +380,35 @@ purchaseInvoices.post('/:id/match', requireRole('ADMIN', 'MANAGER'), async (c) =
     return c.json({ success: false, error: 'PO가 연결되지 않았습니다.' }, 400)
   }
 
-  // PO 금액
+  // ★세 금액을 **같은 축**으로 맞춘다(2026-09-27). 종전엔 인보이스(부가세 포함)·발주(부가세 포함·할인 차감)·
+  //   입고(공급가·불합격 포함)를 서로 맞대어, 금액이 맞아도 부가세·할인·불합격만큼 VARIANCE 가 떴다.
+  //   - 전부 **공급가**(부가세·할인 전) — 인보이스 subtotal · 발주 total_amount · 입고 = 합격수량 × 발주단가
+  //   - 가격 차이 = 인보이스 ↔ **입고분**(부분입고 발주를 발주 전량과 비교하면 늘 차이가 난다)
+  //   - 수량 차이 = 입고분 ↔ 발주 — 입고가 끝난(RECEIVED) 발주에서만 의미가 있다(열린 발주는 아직 덜 온 게 정상)
   const po = await c.env.DB.prepare(
-    `SELECT final_amount FROM purchase_orders WHERE id = ?`
-  ).bind(invoice.po_id).first<{ final_amount: number }>()
+    `SELECT status, COALESCE(total_amount, 0) AS total_amount FROM purchase_orders WHERE id = ?`
+  ).bind(invoice.po_id).first<{ status: string; total_amount: number }>()
 
-  // 입고 금액
   const receipt = await c.env.DB.prepare(`
-    SELECT COALESCE(SUM(iri.received_quantity * poi.unit_price), 0) as receipt_amount
+    SELECT COALESCE(SUM(MAX(0, COALESCE(iri.received_quantity, iri.quantity, 0) - COALESCE(iri.rejected_quantity, 0)) * poi.unit_price), 0) as receipt_amount
     FROM inventory_receipt_items iri
     JOIN purchase_order_items poi ON iri.po_item_id = poi.id
     JOIN inventory_receipts ir ON iri.receipt_id = ir.id
-    WHERE ir.po_id = ? AND ir.status != 'CANCELLED'
+    WHERE ir.po_id = ? AND COALESCE(ir.status, '') != 'CANCELLED'
   `).bind(invoice.po_id).first<{ receipt_amount: number }>()
 
-  const poAmount = po?.final_amount || 0
-  const receiptAmount = receipt?.receipt_amount || 0
-  const invoiceAmount = invoice.total_amount
-
-  // 허용 오차 1%
-  const tolerance = Math.max(poAmount, invoiceAmount) * 0.01
+  const poAmount = Number(po?.total_amount) || 0
+  const receiptAmount = Number(receipt?.receipt_amount) || 0
+  const invoiceAmount = Number(invoice.subtotal ?? (Number(invoice.total_amount || 0) - Number(invoice.vat_amount || 0))) || 0
 
   let matchStatus = 'MATCHED'
   let variance = 0
 
-  if (Math.abs(invoiceAmount - poAmount) > tolerance) {
+  // 허용 오차 1%
+  if (Math.abs(invoiceAmount - receiptAmount) > Math.max(receiptAmount, invoiceAmount) * 0.01) {
     matchStatus = 'PRICE_VARIANCE'
-    variance = invoiceAmount - poAmount
-  } else if (Math.abs(receiptAmount - poAmount) > tolerance) {
+    variance = invoiceAmount - receiptAmount
+  } else if (po?.status === 'RECEIVED' && Math.abs(receiptAmount - poAmount) > Math.max(receiptAmount, poAmount) * 0.01) {
     matchStatus = 'QUANTITY_VARIANCE'
     variance = receiptAmount - poAmount
   }
