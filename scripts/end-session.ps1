@@ -28,31 +28,42 @@ if (-not (Test-Path $wtPath)) { throw "no such worktree: $wtPath" }
 $dirty = git -C "$wtPath" status --porcelain --untracked-files=no
 if ($dirty) { Write-Error "uncommitted changes present - commit/discard first:`n$dirty"; exit 1 }
 
-# --- dev server pre-termination guard ---
-# A live dev server (npm run dev:d1 = `wrangler pages dev` -> spawns workerd) holds a
-# lock on the worktree's .wrangler. Stopping workerd alone is futile: the wrangler
-# PARENT instantly respawns it and recreates a REAL .wrangler dir (not a junction),
-# so the rmdir below silently fails (yet would print "unlinked") and `git worktree
-# remove` aborts with "Directory not empty". So kill the wrangler parent FIRST, then
-# workerd, then wait for the port to free. (Single dev port 3000 invariant -> only one
-# dev server runs at a time, so this targets the right one.)
-$devNode = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
-  Where-Object { $_.CommandLine -and $_.CommandLine -match 'wrangler' -and $_.CommandLine -match 'pages\s+dev' })
-if ($devNode -or (Get-Process workerd -ErrorAction SilentlyContinue)) {
-  Write-Warning "dev server is running - stopping it first (wrangler parent BEFORE workerd, else it respawns)"
-  foreach ($p in $devNode) {
-    try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop; Write-Host "  stopped wrangler (pid $($p.ProcessId))" -ForegroundColor DarkGray } catch {}
+# --- dev server pre-termination guard (THIS worktree's server only) ---
+# A live dev server (`wrangler pages dev` -> spawns workerd) holds a lock on the worktree's
+# .wrangler. Stopping workerd alone is futile: the wrangler PARENT instantly respawns it.
+# So kill the wrangler parent FIRST, then its workerd children.
+#
+# OWNERSHIP (2026-09-26 incident): this guard used to kill EVERY `wrangler pages dev` +
+# EVERY workerd on the machine. Ending one session killed another live session's server
+# (plate-workorder). Now we only stop processes whose command line contains THIS worktree's
+# path, plus their descendants. A server we cannot attribute is left running - if it really
+# was ours and still holds the junction, the unlink below fails loudly and the SAFETY check
+# refuses `worktree remove` (no data loss); close it manually and retry.
+$all = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+$wtNorm = $wtPath.ToLower().Replace('/', '\')
+$roots = @($all | Where-Object { $_.CommandLine -and $_.CommandLine.ToLower().Replace('/', '\').Contains($wtNorm) -and $_.CommandLine -match 'wrangler' })
+$owned = New-Object System.Collections.Generic.HashSet[int]
+foreach ($r in $roots) { [void]$owned.Add([int]$r.ProcessId) }
+do {
+  $grew = $false
+  foreach ($p in $all) {
+    if (-not $owned.Contains([int]$p.ProcessId) -and $owned.Contains([int]$p.ParentProcessId)) { [void]$owned.Add([int]$p.ProcessId); $grew = $true }
   }
-  $busy = $true
-  for ($i = 0; $i -lt 12; $i++) {
-    Get-Process workerd -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    $sock = New-Object System.Net.Sockets.TcpClient
-    try { $sock.Connect('127.0.0.1', 3000); $busy = $sock.Connected } catch { $busy = $false } finally { $sock.Dispose() }
-    if (-not $busy) { break }
-    Start-Sleep -Milliseconds 250
+} while ($grew)
+$others = @($all | Where-Object { -not $owned.Contains([int]$_.ProcessId) -and (($_.Name -eq 'workerd.exe') -or ($_.Name -eq 'node.exe' -and $_.CommandLine -match 'wrangler' -and $_.CommandLine -match 'pages\s+dev')) })
+if ($others.Count -gt 0) {
+  Write-Host "  other dev server(s) left running (not this worktree's): pid $(($others | ForEach-Object { $_.ProcessId }) -join ', ')" -ForegroundColor DarkGray
+}
+if ($owned.Count -gt 0) {
+  Write-Warning "this worktree's dev server is running - stopping it first (wrangler parent BEFORE workerd, else it respawns)"
+  # parents first (roots), then everything else we own
+  foreach ($id in @($roots | ForEach-Object { [int]$_.ProcessId }) + @($owned)) {
+    try { Stop-Process -Id $id -Force -ErrorAction Stop; Write-Host "  stopped pid $id" -ForegroundColor DarkGray } catch {}
   }
-  if ($busy) { throw "port 3000 still busy after stopping dev server - aborting (a real .wrangler may have been recreated; close the dev server manually and retry)" }
-  Write-Host "  dev server stopped (port 3000 free)" -ForegroundColor DarkGray
+  Start-Sleep -Milliseconds 500
+  $left = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $owned.Contains([int]$_.ProcessId) })
+  if ($left.Count -gt 0) { throw "could not stop this worktree's dev server (pid $(($left | ForEach-Object { $_.ProcessId }) -join ', ')) - close it manually and retry" }
+  Write-Host "  this worktree's dev server stopped" -ForegroundColor DarkGray
 }
 
 # unlink junctions safely (removes the LINK only, keeps the target). Report success
