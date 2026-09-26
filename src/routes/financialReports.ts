@@ -311,35 +311,39 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
     // ★ 2026-08-06: 거래처별 부호 분리 — 잔액이 음수인 거래처는 **선수금(부채)** 이라 자산에 마이너스로 섞으면 안 된다.
     //   종전엔 뭉쳐 SUM 해서 매출채권이 선수금만큼 과소, 부채는 과소로 **양변이 동시에 축소**됐다(순자산은 동일).
     //   allEntities = 이 엔드포인트는 설계상 전사 기준(entity 무필터)이라 헬퍼도 같은 기준으로 부른다.
-    const arSplit = await deriveArSplit(c, { allEntities: true })
+    // ★2026-09-26 결정: 스냅샷의 **모든 항목을 같은 범위**로 — 법인을 고르면 그 법인, 전체 모드(0)면 전사.
+    //   예전엔 현금만 세션 법인이고 나머지는 전사라, 법인을 고르면 순자산이 서로 다른 범위의 값을 섞었다.
+    const arSplit = await deriveArSplit(c)
 
     // 매입 미지급 — purchase_balance 캐시 폐기 → 파생(POs[NOT IN DRAFT/CANCELLED] − payments − adjustments). AR과 동일 전사 기준(entity 무필터), 단 내부법인(그룹 3사)은 제외(법인간거래 탭 이관)
     // ★ 2026-08-24: AR(deriveArSplit, 2026-08-06)과 대칭으로 **공급처별 부호 분리** — 잔액이 음수인 공급처는
     //   선급/과지급(자산: 선급금)이라, 뭉쳐 SUM 하면 매입채무·자산이 같은 액수만큼 동시에 과소된다(순자산만 동일).
     //   실측 2026-08-11(§8-Z-41): 음수 4곳 −5,436,465 — 전부 실제 선급/과지급이라 데이터는 손대지 않고 표시만 분리.
+    const efAp = entityFilter(c)
     const apRow = await c.env.DB.prepare(`
       WITH bal AS (
         SELECT sid, SUM(v) AS b FROM (
           SELECT supplier_id AS sid, final_amount AS v FROM purchase_orders
-           WHERE status NOT IN ('DRAFT', 'CANCELLED')${excludePurchaseNonCounterpartiesSql('supplier_id')}
+           WHERE status NOT IN ('DRAFT', 'CANCELLED')${excludePurchaseNonCounterpartiesSql('supplier_id')}${efAp.clause}
           UNION ALL
-          SELECT supplier_id, -amount FROM purchase_payments WHERE 1=1${excludePurchaseNonCounterpartiesSql('supplier_id')}
+          SELECT supplier_id, -amount FROM purchase_payments WHERE 1=1${excludePurchaseNonCounterpartiesSql('supplier_id')}${efAp.clause}
           UNION ALL
-          SELECT supplier_id, -amount FROM purchase_adjustments WHERE 1=1${excludePurchaseNonCounterpartiesSql('supplier_id')}
+          SELECT supplier_id, -amount FROM purchase_adjustments WHERE 1=1${excludePurchaseNonCounterpartiesSql('supplier_id')}${efAp.clause}
         ) GROUP BY sid
       )
       SELECT COALESCE(SUM(CASE WHEN b > 0 THEN b ELSE 0 END), 0) AS payable,
              COALESCE(SUM(CASE WHEN b < 0 THEN -b ELSE 0 END), 0) AS prepaid,
              COALESCE(SUM(CASE WHEN b < 0 THEN 1 ELSE 0 END), 0) AS prepaid_suppliers
         FROM bal
-    `).first<ApRow>()
+    `).bind(...efAp.params, ...efAp.params, ...efAp.params).first<ApRow>()
 
     // 재고 평가액 (#433: 재고는 items가 아니라 inventory.quantity, 평가단가=items.avg_unit_cost 이동평균)
+    const efInv = entityFilter(c, 'inv')
     const inventoryRow = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(inv.quantity * COALESCE(it.avg_unit_cost, 0)), 0) as total_inventory
       FROM inventory inv JOIN items it ON it.id = inv.item_id
-      WHERE it.is_active = 1
-    `).first<InventoryRow>().catch((): InventoryRow => ({ total_inventory: 0 }))
+      WHERE it.is_active = 1${efInv.clause}
+    `).bind(...efInv.params).first<InventoryRow>().catch((): InventoryRow => ({ total_inventory: 0 }))
 
     // 은행 잔액 합계 (#433: bank_accounts엔 잔액 컬럼 없음 → 계좌별 최신 거래의 balance_after 합산)
     // #537: 현금잔액 SSOT — bankBalance.ts LATEST_BALANCE_SUBQUERY(balance_after IS NOT NULL 필터 포함)로 통일.
@@ -353,10 +357,11 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
     `).bind(...efBank.params).first<BankRow>().catch((): BankRow => ({ total_bank: 0 }))
 
     // 대출 잔액 (#433: loans 실제 컬럼 = current_balance / is_active. remaining_principal·status는 부재)
+    const efLoan = entityFilter(c)
     const loanRow = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(current_balance), 0) as total_loan
-      FROM loans WHERE is_active = 1
-    `).first<LoanRow>().catch((): LoanRow => ({ total_loan: 0 }))
+      FROM loans WHERE is_active = 1${efLoan.clause}
+    `).bind(...efLoan.params).first<LoanRow>().catch((): LoanRow => ({ total_loan: 0 }))
 
     const cash = Number(bankRow?.total_bank) || 0
     const ar = arSplit.receivable          // 매출채권 = 양수 잔액만

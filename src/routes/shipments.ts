@@ -1628,6 +1628,11 @@ shipmentsRouter.patch('/:id/status', requireEditOrRole('/shipments', 'MANAGER'),
     if (!shipment) {
       return c.json({ success: false, error: '출고 정보를 찾을 수 없습니다.' }, 404)
     }
+    // ★출고된 건을 「준비중」으로 되돌리지 않는다(2026-09-26 결정) — 이 경로는 주문만 PRINT_DONE 으로 내리고
+    //   재고 환원·카드 출고 해제를 안 해 반쪽 상태를 만들었다. 되돌리려면 [출고취소](CANCELLED 분기 = 환원 포함).
+    if (status === 'PREPARING' && ['SHIPPED', 'IN_TRANSIT', 'DELIVERED'].includes(shipment.status)) {
+      return c.json({ success: false, error: '출고된 건은 준비중으로 되돌릴 수 없습니다. 출고취소를 이용하세요.' }, 400)
+    }
 
     // #51 + #185: 출고 취소 시 카드 shipped_at 롤백 + 주문 상태 복원 + auto_complete_date 리셋
     // 모든 UPDATE/INSERT를 수집하여 batch로 원자적 실행

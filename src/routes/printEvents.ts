@@ -360,6 +360,9 @@ async function autoCheckCardItem(db: D1Database, cardId: number, orderItemId: nu
   if (allDone) {
     // 카드 상태 확인
     const card = await db.prepare('SELECT status, post_processing, order_id FROM cards WHERE id = ?').bind(cardId).first<CardRow>()
+    // ★보류(HOLD)는 사람이 건 것(주문취소·불량) — 장비 신호가 넘지 않는다(2026-09-26 결정).
+    //   품목의 출력 기록(위 print_completed)은 남기고 카드 상태만 그대로 둔다. 보류를 풀면 그때 완료로 간다.
+    if (card && card.status === 'HOLD') return
     if (card && card.status !== 'PRINT_DONE') {
       // 후가공 여부 → pp_status
       const hasPP = card.post_processing && card.post_processing !== '[]' && card.post_processing !== ''
@@ -1468,12 +1471,30 @@ printEventsRouter.post('/link', authMiddleware, async (c) => {
       WHERE card_id IS NULL AND (file_name = ? OR file_name = ?)
     `).bind(card.id, card.card_number, card.order_number, mapEntityId, file_name, noExt).run()
 
+    // ★소급 연결된 출력 기록 중 **실제 출력 완료(OK·RIP 아님)** 가 있으면 카드 품목을 출력완료로 표시한다
+    //   (2026-09-26 결정). 예전엔 card_id 만 붙이고 끝나 카드가 영영 출력대기로 남았다.
+    //   ⚠️자재 자동차감은 **소급하지 않는다** — 과거 재고를 뒤흔들지 않게(memory design-material-auto-deduct 「소급금지」).
+    //   타일 분할 출력은 모든 타일이 OK 일 때만(입수 경로의 checkAllTilesComplete 와 같은 규칙).
+    let markedPrinted = false
+    if ((back.meta.changes || 0) > 0) {
+      const { results: okFiles } = await c.env.DB.prepare(`
+        SELECT file_path, MAX(COALESCE(tile_count, 0)) AS tiles FROM print_events
+        WHERE card_id = ? AND print_status = 'OK' AND COALESCE(event_kind, '') != 'RIP' AND (file_name = ? OR file_name = ?)
+        GROUP BY file_path
+      `).bind(card.id, file_name, noExt).all<{ file_path: string; tiles: number }>()
+      for (const f of okFiles || []) {
+        if (await checkAllTilesComplete(c.env.DB, f.file_path, Number(f.tiles) || 0)) { markedPrinted = true; break }
+      }
+      if (markedPrinted) await autoCheckCardItem(c.env.DB, card.id, linkOrderItemId, '수동 연결')
+    }
+
     return c.json({
       success: true,
       data: {
         file_name, card_id: card.id, card_number: card.card_number,
         order_number: card.order_number, file_seq: fileSeq,
-        backfilled_events: back.meta.changes || 0
+        backfilled_events: back.meta.changes || 0,
+        marked_printed: markedPrinted,
       }
     })
   } catch (error) {

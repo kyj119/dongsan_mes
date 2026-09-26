@@ -243,3 +243,12 @@ Workflow 15트랙(메타·게이트·도메인 코드·외부 축) → 중·고 
 | 46 | 거래처 가져오기: 파일에 있는 칸은 파일이 정본(빈 칸=지움), 없는 칸은 유지 | 프론트는 머리행에 있는 열만 전송 · 서버 UPDATE 는 받은 칸만 · 기본값은 신규 등록에만 |
 
 함께: `test:auth-boundary` ③ 을 DB-정본 원칙으로 갱신(1차 #7 switch-entity 수정 이후 전제가 낡았다 — STAFF 클레임+DB ADMIN 은 이제 200·DB 역할로 발급이 정답, 없는 계정 401 추가).
+
+## 결정 4차 (2026-09-26)
+
+| # | 결정 | 반영 |
+|---|---|---|
+| 74 | 미매칭 출력 기록을 카드에 연결하면 **출력완료 표시만**(자동차감 소급 안 함) | `/print-events/link` 소급 후 OK·비RIP·타일 완료 이벤트가 있으면 `autoCheckCardItem`(응답 `marked_printed`). prod 최근 60일 미매칭 9,660/12,670 |
+| 25 | 보류 카드는 장비 신호로 안 바뀐다 | `autoCheckCardItem` 이 HOLD 카드면 품목 기록만 남기고 상태 유지 |
+| 70 | 출고된 건을 준비중으로 되돌리기 막기 | `PATCH /shipments/:id/status` PREPARING ← SHIPPED/IN_TRANSIT/DELIVERED 400(출고취소 안내) |
+| 58 | 재무 스냅샷 전 항목 = 선택 법인(전체 모드면 전사) | AR `deriveArSplit(c)` · AP 3테이블·재고·차입금에 entity 필터. 격리 DB 실측: 법인0 재고 = 법인1+법인2 |
