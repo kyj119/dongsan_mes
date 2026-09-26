@@ -358,6 +358,15 @@ console.log('\n── 12 도련 색 규칙(insetFor) — 얇은·두꺼운 테�
     ok('건너뛰기 깊이는 mm 기준 — 0.75mm/px 3px · 1.5mm/px 1px(2mm 반올림)', insetFor({ mode: 'skip', skipMm: 2, mmpp: 0.75 }).srcFixedPx === 3 && insetFor({ mode: 'skip', skipMm: 2, mmpp: 1.5 }).srcFixedPx === 1)
     ok('자동·사진 있음 → 종전 2px(소프트 에지)', insetFor({ mode: 'auto', photo: true }).srcInsetPx === 2 && insetFor({ mode: 'auto', photo: true }).why === 'photo')
     ok('사각 조각은 자동에서도 가장자리 그대로(0.94.0 유지)', insetFor({ mode: 'auto', rect: true, photo: true }).srcInsetPx === 0)
+    // ★사각 모서리 블록(2026-09-26 실기 「건너뛰기인데 모서리만 테두리색 덩어리」) — 대각선으로 2mm 들어가면
+    //   가로·세로로는 1.4mm 라 테두리 안에 머문다. 사각 모서리는 **축별로** 2mm 들어가야 변과 같은 색이 된다.
+    const cornerRing = (bw, o) => { const r = repeatLastPixel(frame(bw), 6, Object.assign({ corner: 'square' }, o)); return [px(r, 6 + 3, 6 + 3), px(r, 6 + 1, 6 + 4), px(r, 6 + 4, 6 + 1), px(r, 6 + 3, 21 + 6)].map((p) => p.slice(0, 3).join()) }
+    const sk = insetFor({ mode: 'skip', skipMm: 2, mmpp: 0.5 })
+    const cr = cornerRing(3, { srcInsetPx: 0, srcFixedPx: sk.srcFixedPx })
+    ok('건너뛰기 · 사각 모서리 블록(대각·비대칭 셀)도 흰색 — 테두리 3px', cr.slice(0, 3).every((c) => c === WHT), cr.join(' / '))
+    ok('건너뛰기 · 사각 변 도련은 종전과 동일(흰색)', cr[3] === WHT, cr[3])
+    const ce = cornerRing(3, { srcInsetPx: 0 })
+    ok('가장자리 그대로 · 사각 모서리는 테두리색 유지(건너뛰기만 바뀐다)', ce.slice(0, 3).every((c) => c === BLK), ce.join(' / '))
     // 고정 깊이 옵션이 없을 때(기존 호출)는 동작 불변 — 1px 테두리를 걸음이 건너뛰어 흰색(종전 결함 재현)
     ok('기존 호출(srcInsetPx 2) 동작 불변 — 1px 테두리는 흰색', ring(frame(1), { srcInsetPx: 2 }) === WHT)
   }

@@ -177,8 +177,17 @@
         //   첫 안쪽 픽셀을 쓴다(위 주석). 안정점이 없으면 최외곽 유지 = 종전 동작.
         //   TOL2 = 채널당 ±8 (8²×3 = 192) — 사진 노이즈는 안정, 블렌드 계단은 불안정으로 갈린다.
         if (fixedD) {
-          var fl = Math.sqrt(a * a + b * b) || 1;
-          var fx = sx - Math.round(a / fl * fixedD), fy = sy - Math.round(b / fl * fixedD);
+          // ★사각 모서리 블록은 **축별로** 들어간다(2026-09-26 실기 「건너뛰기인데 모서리만 테두리색 덩어리」).
+          //   방향을 따라 들어가면 모서리 셀은 가로·세로로 fixedD·cos 만큼만 들어가 테두리 안에 머물고,
+          //   셀마다 방향이 달라 같은 블록 안에서 흰/검정이 갈렸다. 변(a 나 b 가 0)은 두 식이 **같은 픽셀**을 준다.
+          var fx, fy;
+          if (square) {
+            fx = sx - (a > 0 ? fixedD : (a < 0 ? -fixedD : 0));
+            fy = sy - (b > 0 ? fixedD : (b < 0 ? -fixedD : 0));
+          } else {
+            var fl = Math.sqrt(a * a + b * b) || 1;
+            fx = sx - Math.round(a / fl * fixedD); fy = sy - Math.round(b / fl * fixedD);
+          }
           if (fx >= 0 && fy >= 0 && fx < NW && fy < NH) {
             var jf = (fy * NW + fx) * 4;
             if (out[jf + 3] >= aMin) j = jf;
