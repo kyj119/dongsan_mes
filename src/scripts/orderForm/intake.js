@@ -602,6 +602,14 @@
                 if (box) box.dataset.pendingPunch = JSON.stringify(p);
             }
 
+            // 코팅 보류 — 펀칭과 같은 이유로 PP 컨테이너에 얹고 finishing.js applyPendingCoating 이 꺼낸다.
+            //   패널이 보내는 건 옵션 id 가 아니라 이름 글자(post_desc)라 매칭은 그쪽에서 이름으로 한다.
+            function ofStashCoating(rowId, postDesc) {
+                if (!postDesc) return;
+                var box = document.getElementById('pp_options_' + rowId);
+                if (box) box.dataset.pendingCoating = String(postDesc);
+            }
+
             // 대기물 1건 → 주문 라인 1개 (라인별 intake_id 마커 → 저장 후 absorb가 order_item_id 매핑)
             async function ofIntakePrefillOne(r) {
                 // 빈 라인이 있으면 그 라인을 채운다(주문서를 열면 있는 라인1이 남지 않도록).
@@ -681,6 +689,8 @@
 
                 // 펀칭 — 품목 선택 후 PP 섹션이 생길 때 반영된다(ofStashPunch 주석)
                 ofStashPunch(id, r.punch_json);
+                ofStashCoating(id, r.post_desc);
+                if (typeof window.ofApplyPendingPP === 'function') window.ofApplyPendingPP(id);
 
                 // absorb 대상 마커 (주문 저장 성공 후 calc.js 훅이 수거 — 라인별 order_item_id 매핑)
                 var rowEl = document.getElementById('item-' + id);
@@ -740,7 +750,7 @@
                 await ofIntakePrefillOne(r);
                 ofTrayAfterPrefill([r.id]);
                 var pickMsg = '대기물을 라인으로 불러왔습니다. 품목·단가를 확인해 주세요.';
-                if (r.post_desc) pickMsg += ' (후가공: ' + r.post_desc + ' — 품목 선택 후 확정)';
+                if (r.post_desc) pickMsg += ' (후가공: ' + r.post_desc + ' — 코팅은 자동 선택, 나머지는 품목 선택 후 확정)';
                 if (typeof showToast === 'function') showToast(pickMsg, 'info');
                 ofPlateLeftoverWarn([r]);
             };
@@ -850,6 +860,8 @@
 
                 // 펀칭도 마감과 같이 **부모 행에만** 얹는다 — 자식 카드가 상속한다(묶음 키가 마감을 보는 이유와 동일)
                 ofStashPunch(parentId, r0.punch_json);
+                ofStashCoating(parentId, r0.post_desc);
+                if (typeof window.ofApplyPendingPP === 'function') window.ofApplyPendingPP(parentId);
 
                 var okIds = [], failed = [];
                 for (var i = 0; i < rows.length; i++) {

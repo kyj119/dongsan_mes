@@ -598,6 +598,7 @@
 
                     setupPPEvents(rowId);
                     applyPendingPunch(rowId); // 대기함이 얹어 둔 펀칭 반영 — 이벤트 배선 뒤여야 한다
+                    applyPendingCoating(rowId); // 대기함 post_desc 의 코팅 — 펀칭과 같은 보류 규약
 
                 } catch(e) {
                     console.error('loadItemPP error:', e);
@@ -632,6 +633,36 @@
                 // 상세 표시·주석 게이트·단가·합계는 기존 change 핸들러 한 곳에 맡긴다(경로 이중화 금지)
                 check.dispatchEvent(new Event('change'));
             }
+
+            // 가공 대기함이 얹어 둔 코팅(orderForm/intake.js ofStashCoating)을 PP 섹션이 생긴 뒤 고른다 (2026-09-26 실기).
+            //   재단 패널은 코팅을 **이름 글자**(post_desc, 「무광코팅」·「소재+무광코팅」)로만 보낸다 → 옵션 이름과
+            //   **토막 단위 완전 일치**로만 고른다(부분 일치는 「무광」이 「무광코팅」을 오선택할 수 있다).
+            //   이 소분류에 코팅이 없거나 맞는 이름이 없으면 보류값을 지우지 않는다 — 품목을 바꾸면 다시 시도된다.
+            //   코팅 셀렉트는 change 핸들러가 없고 calc.js 가 calcItem 때 읽는다 → 고른 뒤 calcItem.
+            function applyPendingCoating(rowId) {
+                var container = document.getElementById('pp_options_' + rowId);
+                if (!container || !container.dataset.pendingCoating) return;
+                var sel = container.querySelector('.pp-coating-select');
+                if (!sel) return;
+                var tokens = String(container.dataset.pendingCoating).split('+').map(function(t) { return t.trim(); });
+                for (var i = 0; i < sel.options.length; i++) {
+                    var nm = sel.options[i].dataset.ppName;
+                    if (nm && tokens.indexOf(nm) !== -1) {
+                        sel.selectedIndex = i;
+                        delete container.dataset.pendingCoating;
+                        if (typeof calcItem === 'function') calcItem(rowId);
+                        return;
+                    }
+                }
+            }
+
+            // ★보류값을 얹은 **직후**에도 부른다 — 품목 프리필(applyItemSelection→loadItemPP)이 await 없이 돌아
+            //   PP 섹션이 보류보다 **먼저** 그려질 수 있다. 그러면 렌더 끝의 apply 는 빈손으로 지나간다.
+            //   두 입구(렌더 끝·보류 직후) 중 늦은 쪽이 꽂고, 꽂으면 보류를 지우므로 두 번 적용되지 않는다.
+            window.ofApplyPendingPP = function(rowId) {
+                applyPendingPunch(rowId);
+                applyPendingCoating(rowId);
+            };
 
             function setupPPEvents(rowId) {
                 const container = document.getElementById('pp_options_' + rowId);
