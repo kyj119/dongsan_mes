@@ -14,7 +14,7 @@ import { entityFilter } from '../../utils/entityFilter'
 import { kstYmd } from '../../utils/kstDate'
 import { excludeArExcludedClientsSql } from '../../constants/arPolicy'
 import {
-  deriveClientBalance, buildIntegrityQuery, getAgingCategory, queryFifoOverdue, agingDaysFromOldest,
+  deriveClientBalance, deriveClientBalancesBulk, buildIntegrityQuery, getAgingCategory, queryFifoOverdue, agingDaysFromOldest,
   type PaymentRow, type IntegrityRow, type ReceivableClientRow,
   type ReceivableOrderRow, type NotifLinkRow,
 } from './ar-helpers'
@@ -27,7 +27,12 @@ arReceivablesRouter.use('/*', authMiddleware, requireEditOrRole('/ledger', 'MANA
 // 잔액 재계산 / 미수금 경고 / 감액 관리
 // =============================================================================
 
-// GET /integrity-check - 전체 거래처 잔액 정합성 검사
+// GET /integrity-check - 미수 파생 경로 대사
+// ★비교 대상을 바꿨다(2026-09-27) — 종전엔 폐기된 clients.balance 캐시(prod 전량 0)와 비교해 미수가 있는 거래처 전부를
+//   「불일치」로 보고했고, 그걸 고칠 방법도 없었다(쓰기는 X5 에서 이미 제거). 지금은 **같은 정의를 다르게 계산하는 두 경로**를 대사한다:
+//   A = 목록 산식(buildIntegrityQuery — /receivables·정산 목록과 같은 사전집계 LEFT JOIN 1-pass)
+//   B = 거래처별 파생(deriveClientBalancesBulk — deriveClientBalance 와 같은 정의, 알림 발송·이관 대사가 쓰는 경로)
+//   둘이 1원 이상 갈리면 한쪽 경로의 필터(법인·상태·제외 거래처)가 어긋난 것이다 — 데이터가 아니라 **코드**를 고칠 신호다.
 arReceivablesRouter.get('/integrity-check', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
     const { query: integrityQuery, params: integrityParams } = buildIntegrityQuery(c)
@@ -35,19 +40,23 @@ arReceivablesRouter.get('/integrity-check', requireEditOrRole('/ledger', 'MANAGE
       ? await c.env.DB.prepare(integrityQuery).bind(...integrityParams).all<IntegrityRow>()
       : await c.env.DB.prepare(integrityQuery).all<IntegrityRow>()
 
-    interface DiscrepancyRow { client_id: number; client_code: string; client_name: string; cached_balance: number; calculated_balance: number; difference: number }
+    // 활동이 있는 거래처만 B 로 다시 센다(전 거래처를 청크로 돌 필요 없다 — 활동 없는 곳은 둘 다 0)
+    const active = rows.filter(r => Number(r.total_billed) || Number(r.total_paid) || Number(r.total_adj))
+    const derived = await deriveClientBalancesBulk(c, active.map(r => r.id))
+
+    interface DiscrepancyRow { client_id: number; client_code: string; client_name: string; list_balance: number; derived_balance: number; difference: number }
     const discrepancies: DiscrepancyRow[] = []
-    for (const row of rows) {
-      const calculated = Number(row.total_billed) - Number(row.total_paid) - Number(row.total_adj)
-      const cached = Number(row.balance) || 0
-      if (Math.abs(calculated - cached) > 0.01) {
+    for (const row of active) {
+      const listBalance = Number(row.total_billed) - Number(row.total_paid) - Number(row.total_adj)
+      const derivedBalance = Number(derived[row.id] ?? 0)
+      if (Math.abs(listBalance - derivedBalance) >= 1) {
         discrepancies.push({
           client_id: row.id,
           client_code: row.client_code,
           client_name: row.client_name,
-          cached_balance: cached,
-          calculated_balance: +(calculated.toFixed(2)),
-          difference: +(calculated - cached).toFixed(2)
+          list_balance: Math.round(listBalance),
+          derived_balance: Math.round(derivedBalance),
+          difference: Math.round(listBalance - derivedBalance)
         })
       }
     }
@@ -55,7 +64,7 @@ arReceivablesRouter.get('/integrity-check', requireEditOrRole('/ledger', 'MANAGE
     return c.json({
       success: true,
       data: {
-        total_checked: rows.length,
+        total_checked: active.length,
         discrepancy_count: discrepancies.length,
         discrepancies
       }
@@ -66,42 +75,9 @@ arReceivablesRouter.get('/integrity-check', requireEditOrRole('/ledger', 'MANAGE
   }
 })
 
-// POST /integrity-fix - 불일치 거래처 일괄 재계산
+// POST /integrity-fix - 폐기(2026-09-27). 미수는 파생이라 「고쳐 쓸」 캐시가 없다 — 대사에서 갈리면 코드를 고친다.
 arReceivablesRouter.post('/integrity-fix', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
-  try {
-    const { client_ids } = await c.req.json() as { client_ids?: number[] }
-
-    const { query: integrityQuery, params: integrityParams } = buildIntegrityQuery(c)
-    const { results: rows } = integrityParams.length > 0
-      ? await c.env.DB.prepare(integrityQuery).bind(...integrityParams).all<IntegrityRow>()
-      : await c.env.DB.prepare(integrityQuery).all<IntegrityRow>()
-
-    let fixed = 0
-    interface FixResult { client_id: number; client_name: string; old: number; new: number }
-    const fixResults: FixResult[] = []
-
-    for (const row of rows) {
-      if (client_ids && client_ids.length > 0 && !client_ids.includes(row.id)) continue
-
-      const calculated = Number(row.total_billed) - Number(row.total_paid) - Number(row.total_adj)
-      const cached = Number(row.balance) || 0
-
-      if (Math.abs(calculated - cached) > 0.01) {
-        // X5: clients.balance 캐시 폐기 — 미수금 정본=파생(deriveClientBalance). 죽은 캐시에 write하지 않고 차이만 리포트.
-        fixResults.push({ client_id: row.id, client_name: row.client_name, old: cached, new: +(calculated.toFixed(2)) })
-        fixed++
-      }
-    }
-
-    return c.json({
-      success: true,
-      data: { fixed, results: fixResults },
-      message: `${fixed}건 잔액 수정 완료`
-    })
-  } catch (error) {
-    console.error('src/routes/ledger.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
+  return c.json({ success: false, error: '미수 잔액은 파생값이라 일괄 수정할 대상이 없습니다. 정합성 검사에서 갈린 거래처는 개발팀에 알려 주세요.' }, 410)
 })
 
 // POST /recalculate/:clientId - 잔액 재계산 (MANAGER+)

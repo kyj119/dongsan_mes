@@ -1478,7 +1478,8 @@ interface ShipmentPatchBody {
   receiver_phone?: string
 }
 
-async function applyShipmentFieldPatch(db: HonoEnv['Bindings']['DB'], shipmentId: number, body: ShipmentPatchBody): Promise<boolean> {
+// 반환 warning = 저장은 됐지만 사람이 알아야 할 것(청구된 주문이라 배송비를 못 맞춤, 2026-09-27)
+async function applyShipmentFieldPatch(db: HonoEnv['Bindings']['DB'], shipmentId: number, body: ShipmentPatchBody): Promise<{ ok: boolean; warning: string | null }> {
   // P3 합포장: 부속 shipment는 대표로 리다이렉트 (송장/라벨수량/수신자 정본 = 대표)
   const merged = await db.prepare(`SELECT merged_into_id FROM shipments WHERE id = ?`).bind(shipmentId).first<{ merged_into_id: number | null }>()
   if (merged?.merged_into_id) shipmentId = merged.merged_into_id
@@ -1512,7 +1513,7 @@ async function applyShipmentFieldPatch(db: HonoEnv['Bindings']['DB'], shipmentId
     params.push(body.receiver_phone || null)
   }
 
-  if (updates.length === 0) return false
+  if (updates.length === 0) return { ok: false, warning: null }
 
   updates.push('updated_at = CURRENT_TIMESTAMP')
   params.push(shipmentId)
@@ -1523,15 +1524,21 @@ async function applyShipmentFieldPatch(db: HonoEnv['Bindings']['DB'], shipmentId
   // 0621 배송비 축 — 박스 수가 저장되면 그 묶음의 배송비 라인(`fee_source='SHIPMENT_BOX'`) 수량을 맞춘다.
   //   대표 주문 = 박스 수, 부속 주문 = 0(박스는 하나고 청구도 한 번이다). 청구된 주문은 건드리지 않는다.
   //   라인이 바뀌면 청구그룹을 다시 센다 — 안 하면 주문 총액과 그룹 금액이 갈린다.
+  //   헤더(최종액·부가세)는 sync 가 같이 맞춘다. 청구된 주문은 금액을 안 바꾸고 경고로 돌려준다.
+  let warning: string | null = null
   if (ok && body.box_count !== undefined) {
     try {
       const sync = await syncShippingFeeFromBoxes(db, shipmentId)
       for (const oid of sync.orderIds) await recalcOrderBillingGroups(db, oid)
+      if (sync.skippedBilled.length > 0) {
+        warning = '회계반영된 주문이라 배송비는 박스 수에 맞춰 바꾸지 않았습니다. 필요하면 회계반영을 취소한 뒤 다시 저장하세요.'
+      }
     } catch (e) {
       console.warn('[shipments] 배송비 박스 동기 실패 shipment=' + shipmentId + ':', e)
+      warning = '박스 수는 저장됐지만 배송비 반영에 실패했습니다.'
     }
   }
-  return ok
+  return { ok, warning }
 }
 
 // ============================================================================
@@ -1553,9 +1560,9 @@ shipmentsRouter.patch('/by-order/:orderId', requireEditOrRole('/shipments', 'MAN
     if (!shipmentId) return c.json({ success: false, error: '출고 정보를 생성할 수 없습니다.' }, 500)
 
     const applied = await applyShipmentFieldPatch(c.env.DB, shipmentId, body)
-    if (!applied) return c.json({ success: false, error: '수정할 항목이 없습니다.' }, 400)
+    if (!applied.ok) return c.json({ success: false, error: '수정할 항목이 없습니다.' }, 400)
 
-    return c.json({ success: true, data: { shipment_id: shipmentId } })
+    return c.json({ success: true, data: { shipment_id: shipmentId }, ...(applied.warning && { warning: applied.warning }) })
   } catch (error) {
     console.error('src/routes/shipments.ts PATCH /by-order error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -1595,11 +1602,11 @@ shipmentsRouter.patch('/:id', requireEditOrRole('/shipments', 'MANAGER', 'OPERAT
     }
 
     const applied = await applyShipmentFieldPatch(c.env.DB, (shipment as { id: number }).id, body)
-    if (!applied) {
+    if (!applied.ok) {
       return c.json({ success: false, error: '수정할 항목이 없습니다.' }, 400)
     }
 
-    return c.json({ success: true })
+    return c.json({ success: true, ...(applied.warning && { warning: applied.warning }) })
   } catch (error) {
     console.error('src/routes/shipments.ts PATCH /:id error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

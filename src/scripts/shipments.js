@@ -696,16 +696,20 @@ async function saveTrackingNumber(key) {
   var boxEl = document.getElementById('h-bc-' + key);
   var boxCount = boxEl ? (parseInt(boxEl.value) || 1) : null;
   var ids = getShipmentIds(grp);
+  var feeWarning = null;
   try {
     for (var i = 0; i < ids.length; i++) {
       // by-order 라우트: ids는 주문 ID (shipment PK 오매칭 방지)
       var payload = { tracking_number: tracking };
       if (boxCount !== null) payload.box_count = boxCount;
-      await axios.patch('/api/shipments/by-order/' + ids[i], payload);
+      var pr = await axios.patch('/api/shipments/by-order/' + ids[i], payload);
+      // 청구된 주문은 서버가 배송비를 안 바꾸고 warning 을 돌려준다(2026-09-27)
+      if (pr && pr.data && pr.data.warning) feeWarning = pr.data.warning;
     }
     // P1: 로컬 상태 동기 (재렌더 시 유지 — 서버 재조회 없이도 값 보존)
     grp.shipments.forEach(function(s) { s.tracking_number = tracking; if (boxCount !== null) s.box_count = boxCount; });
     showToast(boxCount !== null ? ('송장번호·박스 ' + boxCount + '개 저장 완료') : '송장번호 저장 완료', 'success');
+    if (feeWarning) showToast(feeWarning, 'warning');
   } catch (e) {
     showToast('저장 실패: ' + (e.message || ''), 'error');
   }
@@ -1023,12 +1027,14 @@ async function confirmPendingRow(idx) {
   var payload = pendingRowPayload(idx);
   if (!payload) { showToast('한진택배는 송장번호를 넣어야 확정됩니다', 'warning'); return; }
   try {
-    await axios.patch('/api/shipments/by-order/' + r.order_id, payload);
+    var pcRes = await axios.patch('/api/shipments/by-order/' + r.order_id, payload);
+    var pcWarning = pcRes && pcRes.data && pcRes.data.warning;   // 청구된 주문 = 배송비 미반영(2026-09-27)
     await loadPendingConfirm();
     var still = _pendingConfirmRows.some(function (x) { return x.order_id === r.order_id; });
     showToast(escapeHtml(r.order_number) + ' 확정 — 박스 ' + payload.box_count + '개'
-      + (Number(r.fee_lines) > 0 ? ' · 배송비 수량 반영' : '')
+      + (Number(r.fee_lines) > 0 && !pcWarning ? ' · 배송비 수량 반영' : '')
       + (still ? ' · 배송 알림이 남아 목록에 유지됩니다' : ' · 목록에서 정리됐습니다'), 'success');
+    if (pcWarning) showToast(pcWarning, 'warning');
     if (still) flashPendingRows([r.order_id]);
   } catch (e) {
     showToast('확정 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message || ''), 'error');

@@ -544,12 +544,16 @@ arLedgerRouter.get('/monthly-summary', async (c) => {
     const monthCount = parseInt(months)
 
     // Monthly order totals
+    // ★「매출」이 두 뜻이었다(2026-09-27) — 여기는 미청구 포함 주문 최종액 합, 월말 마감(closing-summary)은 청구액이다.
+    //   둘 다 남기되 이름을 가른다: total_order_amount(주문액) · total_billed(청구액 = closing-summary 와 같은 산식·같은 날짜축).
+    //   total_sales 는 하위호환으로 total_order_amount 와 같은 값을 계속 준다.
     const { clause: monthlyOrderEf, params: monthlyOrderEfParams } = entityFilter(c)
     const { results: ordersByMonth } = await c.env.DB.prepare(`
       SELECT
         strftime('%Y-%m', ${arOrderDateExpr()}) as month,
         COUNT(*) as order_count,
-        COALESCE(SUM(final_amount), 0) as total_sales
+        COALESCE(SUM(final_amount), 0) as total_sales,
+        COALESCE(SUM(CASE WHEN billing_status = 'BILLED' THEN billed_amount ELSE 0 END), 0) as total_billed
       FROM orders
       WHERE strftime('%Y', ${arOrderDateExpr()}) >= ? AND status NOT IN ('CANCELLED', 'DRAFT')${monthlyOrderEf}
       GROUP BY strftime('%Y-%m', ${arOrderDateExpr()})
@@ -572,7 +576,7 @@ arLedgerRouter.get('/monthly-summary', async (c) => {
     `).bind(String(parseInt(targetYear) - 1), ...monthlyPaymentEfParams, monthCount).all<MonthlyPaymentRow>()
 
     // Merge into one array
-    interface MonthlySummaryEntry { month: string; order_count: number; total_sales: number; payment_count: number; total_payments: number }
+    interface MonthlySummaryEntry { month: string; order_count: number; total_sales: number; total_order_amount: number; total_billed: number; payment_count: number; total_payments: number }
     const monthMap = new Map<string, MonthlySummaryEntry>()
 
     ;ordersByMonth.forEach(o => {
@@ -580,6 +584,8 @@ arLedgerRouter.get('/monthly-summary', async (c) => {
         month: o.month,
         order_count: o.order_count,
         total_sales: o.total_sales,
+        total_order_amount: o.total_sales,
+        total_billed: o.total_billed,
         payment_count: 0,
         total_payments: 0
       })
@@ -595,6 +601,8 @@ arLedgerRouter.get('/monthly-summary', async (c) => {
           month: p.month,
           order_count: 0,
           total_sales: 0,
+          total_order_amount: 0,
+          total_billed: 0,
           payment_count: p.payment_count,
           total_payments: p.total_payments
         })
@@ -669,7 +677,7 @@ arLedgerRouter.get('/closing-summary', async (c) => {
 
     // 지난달 매출 (전월 대비용) — mo는 1-based
     const prevStart = `${mo === 1 ? y - 1 : y}-${String(mo === 1 ? 12 : mo - 1).padStart(2, '0')}-01`
-    const prevEnd = new Date(y, mo - 1, 0).toISOString().substring(0, 10)
+    const prevEnd = new Date(Date.UTC(y, mo - 1, 0)).toISOString().substring(0, 10)  // monthEnd 와 같은 이유로 UTC
     const prevSalesRes = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(CASE WHEN billing_status='BILLED' THEN billed_amount ELSE 0 END),0) as prev_sales
       FROM orders o

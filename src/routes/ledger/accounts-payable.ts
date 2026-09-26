@@ -39,7 +39,7 @@ interface OverdueRow {
   last_payment_date: string | null
 }
 interface IntegrityRow {
-  id: number; client_code: string; client_name: string; purchase_balance: number
+  id: number; client_code: string; client_name: string
   total_orders: number; total_paid: number; total_adj: number
 }
 interface BalanceRow { purchase_balance: number }
@@ -846,47 +846,67 @@ apRouter.get('/purchase-overdue', async (c) => {
   }
 })
 
-// GET /purchase-integrity-check - 매입 정합성 검사
+// GET /purchase-integrity-check - 미지급 파생 경로 대사
+// ★AR integrity-check 와 같은 전환(2026-09-27) — 종전엔 폐기된 clients.purchase_balance 캐시와 비교했고, 그 대상 발주 상태도
+//   IN ('CONFIRMED','RECEIVED','PARTIAL_RECEIVED') 로 정본(NOT IN DRAFT·CANCELLED — utils/supplierPayable)과 달랐다.
+//   지금은 같은 정의를 다르게 계산하는 두 경로를 대사한다:
+//   A = 공급처 목록 산식(이 파일 Step 3 — 사전집계 LEFT JOIN 1-pass)
+//   B = 공급처별 파생(deriveSupplierPayable 과 같은 정의를 청크 GROUP BY 로)
+//   캐시를 안 쓰므로 법인 스코프에서도 안전하다 — 종전 「전체 모드 전용」 제한(#547, 캐시 덮어쓰기 때문)은 걷었다.
 apRouter.get('/purchase-integrity-check', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
-    // #547: 전체 모드(전 법인, superadmin)에서만 허용. entity-scoped 호출은 법인 스코프 파생값을
-    //   법인 무관 단일 컬럼 clients.purchase_balance에 덮어써 내부거래 3법인 공급처 잔액을 손상시킴.
-    if (getEntityId(c) !== 0) return c.json({ success: false, error: '전체 모드(전 법인)에서만 실행할 수 있습니다.' }, 403)
-    const { clause: intPoEf, params: intPoEfParams } = entityFilter(c)
-    const { clause: intPpEf, params: intPpEfParams } = entityFilter(c)
-    const { clause: intPaEf, params: intPaEfParams } = entityFilter(c)
+    const balEf = entityFilter(c)
     const { results: rows } = await c.env.DB.prepare(`
-      SELECT c.id, c.client_code, c.client_name, c.purchase_balance,
-        COALESCE(po.v, 0) as total_orders,
-        COALESCE(pp.v, 0) as total_paid,
-        COALESCE(pa.v, 0) as total_adj
+      SELECT c.id, c.client_code, c.client_name,
+        COALESCE(bpo.v, 0) as total_orders, COALESCE(bpp.v, 0) as total_paid, COALESCE(bpa.v, 0) as total_adj
       FROM clients c
       LEFT JOIN (
-        SELECT supplier_id, SUM(final_amount) as v
-        FROM purchase_orders WHERE status IN ('CONFIRMED', 'RECEIVED', 'PARTIAL_RECEIVED')${intPoEf}
-        GROUP BY supplier_id
-      ) po ON po.supplier_id = c.id
+        SELECT supplier_id, SUM(final_amount) AS v FROM purchase_orders
+        WHERE status NOT IN ('DRAFT', 'CANCELLED')${balEf.clause} GROUP BY supplier_id
+      ) bpo ON bpo.supplier_id = c.id
       LEFT JOIN (
-        SELECT supplier_id, SUM(amount) as v FROM purchase_payments WHERE 1=1${intPpEf} GROUP BY supplier_id
-      ) pp ON pp.supplier_id = c.id
+        SELECT supplier_id, SUM(amount) AS v FROM purchase_payments WHERE 1=1${balEf.clause} GROUP BY supplier_id
+      ) bpp ON bpp.supplier_id = c.id
       LEFT JOIN (
-        SELECT supplier_id, SUM(amount) as v FROM purchase_adjustments WHERE 1=1${intPaEf} GROUP BY supplier_id
-      ) pa ON pa.supplier_id = c.id
-      WHERE c.is_active = 1${excludePurchaseNonCounterpartiesSql('c.id')} AND (po.v IS NOT NULL OR pp.v IS NOT NULL OR pa.v IS NOT NULL OR COALESCE(c.purchase_balance, 0) <> 0)
-    `).bind(...intPoEfParams, ...intPpEfParams, ...intPaEfParams).all<IntegrityRow>()
+        SELECT supplier_id, SUM(amount) AS v FROM purchase_adjustments WHERE 1=1${balEf.clause} GROUP BY supplier_id
+      ) bpa ON bpa.supplier_id = c.id
+      WHERE c.is_active = 1${excludePurchaseNonCounterpartiesSql('c.id')}
+        AND (bpo.v IS NOT NULL OR bpp.v IS NOT NULL OR bpa.v IS NOT NULL)
+    `).bind(...balEf.params, ...balEf.params, ...balEf.params).all<IntegrityRow>()
 
-    const discrepancies: { supplier_id: number; client_code: string; client_name: string; cached_purchase_balance: number; calculated_purchase_balance: number; difference: number }[] = []
+    // B — 공급처 id 80 청크(D1 바인드 한도), 표 셋을 각각 GROUP BY
+    const derived = new Map<number, number>()
+    const ids = rows.map(r => Number(r.id))
+    for (let i = 0; i < ids.length; i += 80) {
+      const chunk = ids.slice(i, i + 80)
+      const ph = chunk.map(() => '?').join(',')
+      const ef = entityFilter(c)
+      const [po, pp, pa] = await Promise.all([
+        c.env.DB.prepare(`SELECT supplier_id AS sid, SUM(final_amount) AS v FROM purchase_orders
+          WHERE supplier_id IN (${ph}) AND status NOT IN ('DRAFT', 'CANCELLED')${ef.clause} GROUP BY supplier_id`).bind(...chunk, ...ef.params).all<{ sid: number; v: number }>(),
+        c.env.DB.prepare(`SELECT supplier_id AS sid, SUM(amount) AS v FROM purchase_payments
+          WHERE supplier_id IN (${ph})${ef.clause} GROUP BY supplier_id`).bind(...chunk, ...ef.params).all<{ sid: number; v: number }>(),
+        c.env.DB.prepare(`SELECT supplier_id AS sid, SUM(amount) AS v FROM purchase_adjustments
+          WHERE supplier_id IN (${ph})${ef.clause} GROUP BY supplier_id`).bind(...chunk, ...ef.params).all<{ sid: number; v: number }>(),
+      ])
+      for (const id of chunk) derived.set(id, 0)
+      for (const r of po.results || []) derived.set(Number(r.sid), (derived.get(Number(r.sid)) || 0) + (Number(r.v) || 0))
+      for (const r of pp.results || []) derived.set(Number(r.sid), (derived.get(Number(r.sid)) || 0) - (Number(r.v) || 0))
+      for (const r of pa.results || []) derived.set(Number(r.sid), (derived.get(Number(r.sid)) || 0) - (Number(r.v) || 0))
+    }
+
+    const discrepancies: { supplier_id: number; client_code: string; client_name: string; list_balance: number; derived_balance: number; difference: number }[] = []
     for (const row of rows) {
-      const calculated = Number(row.total_orders) - Number(row.total_paid) - Number(row.total_adj)
-      const cached = Number(row.purchase_balance) || 0
-      if (Math.abs(calculated - cached) > 0.01) {
+      const listBalance = Number(row.total_orders) - Number(row.total_paid) - Number(row.total_adj)
+      const derivedBalance = derived.get(Number(row.id)) || 0
+      if (Math.abs(listBalance - derivedBalance) >= 1) {
         discrepancies.push({
           supplier_id: row.id,
           client_code: row.client_code,
           client_name: row.client_name,
-          cached_purchase_balance: cached,
-          calculated_purchase_balance: +(calculated.toFixed(2)),
-          difference: +(calculated - cached).toFixed(2)
+          list_balance: Math.round(listBalance),
+          derived_balance: Math.round(derivedBalance),
+          difference: Math.round(listBalance - derivedBalance)
         })
       }
     }
@@ -905,67 +925,10 @@ apRouter.get('/purchase-integrity-check', requireEditOrRole('/ledger', 'MANAGER'
   }
 })
 
-// POST /purchase-integrity-fix - 매입 정합성 일괄 수정
+// POST /purchase-integrity-fix - 폐기(2026-09-27). clients.purchase_balance 의 마지막 writer 였다 — 화면·API 는 전부 파생을 쓰므로
+//   캐시를 다시 채울 이유가 없고, 채우면 「DB 를 직접 보는 사람」에게 법인 구분 없는 값을 정본처럼 보여 준다.
 apRouter.post('/purchase-integrity-fix', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
-  try {
-    // #547: 전체 모드(전 법인, superadmin)에서만 허용. entity-scoped 호출은 법인 스코프 파생값을
-    //   법인 무관 단일 컬럼 clients.purchase_balance에 덮어써 내부거래 3법인 공급처 잔액을 손상시킴.
-    if (getEntityId(c) !== 0) return c.json({ success: false, error: '전체 모드(전 법인)에서만 실행할 수 있습니다.' }, 403)
-    const { supplier_ids } = await c.req.json() as { supplier_ids?: number[] }
-
-    const { clause: fixPoEf, params: fixPoEfParams } = entityFilter(c)
-    const { clause: fixPpEf, params: fixPpEfParams } = entityFilter(c)
-    const { clause: fixPaEf, params: fixPaEfParams } = entityFilter(c)
-    const { results: rows } = await c.env.DB.prepare(`
-      SELECT c.id, c.client_code, c.client_name, c.purchase_balance,
-        COALESCE(po.v, 0) as total_orders,
-        COALESCE(pp.v, 0) as total_paid,
-        COALESCE(pa.v, 0) as total_adj
-      FROM clients c
-      LEFT JOIN (
-        SELECT supplier_id, SUM(final_amount) as v
-        FROM purchase_orders WHERE status IN ('CONFIRMED', 'RECEIVED', 'PARTIAL_RECEIVED')${fixPoEf}
-        GROUP BY supplier_id
-      ) po ON po.supplier_id = c.id
-      LEFT JOIN (
-        SELECT supplier_id, SUM(amount) as v FROM purchase_payments WHERE 1=1${fixPpEf} GROUP BY supplier_id
-      ) pp ON pp.supplier_id = c.id
-      LEFT JOIN (
-        SELECT supplier_id, SUM(amount) as v FROM purchase_adjustments WHERE 1=1${fixPaEf} GROUP BY supplier_id
-      ) pa ON pa.supplier_id = c.id
-      WHERE c.is_active = 1${excludePurchaseNonCounterpartiesSql('c.id')} AND (po.v IS NOT NULL OR pp.v IS NOT NULL OR pa.v IS NOT NULL OR COALESCE(c.purchase_balance, 0) <> 0)
-    `).bind(...fixPoEfParams, ...fixPpEfParams, ...fixPaEfParams).all<IntegrityRow>()
-
-    let fixed = 0
-    const fixResults: { supplier_id: number; client_name: string; old: number; new: number }[] = []
-
-    for (const row of rows) {
-      if (supplier_ids && supplier_ids.length > 0 && !supplier_ids.includes(row.id)) continue
-
-      const calculated = Number(row.total_orders) - Number(row.total_paid) - Number(row.total_adj)
-      const cached = Number(row.purchase_balance) || 0
-
-      if (Math.abs(calculated - cached) > 0.01) {
-        // 캐시에 남은 마지막 writer — 파생값을 그대로 써준다(누적이 아니라 덮어쓰기라 어긋날 수 없다).
-        //   화면·API 는 전부 파생을 쓰므로(utils/supplierPayable) 이 엔드포인트는 DB 를 직접 보는
-        //   사람을 위한 정합성 복구용으로만 남긴다.
-        await c.env.DB.prepare(
-          'UPDATE clients SET purchase_balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-        ).bind(+(calculated.toFixed(2)), row.id).run()
-        fixResults.push({ supplier_id: row.id, client_name: row.client_name, old: cached, new: +(calculated.toFixed(2)) })
-        fixed++
-      }
-    }
-
-    return c.json({
-      success: true,
-      data: { fixed, results: fixResults },
-      message: `${fixed}건 매입 잔액 수정 완료`
-    })
-  } catch (error) {
-    console.error('src/routes/ledger.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
+  return c.json({ success: false, error: '미지급 잔액은 파생값이라 일괄 수정할 대상이 없습니다. 정합성 검사에서 갈린 공급처는 개발팀에 알려 주세요.' }, 410)
 })
 
 // GET /purchase-client/:clientId/export/csv - 매입 원장 CSV 내보내기

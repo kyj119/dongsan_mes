@@ -126,6 +126,9 @@ const ALLOWLIST = [
   'FROM payments p WHERE p.client_id = ? AND ABS(p.amount - ?) < 0.01',
   // cron.ts 무결성 트립와이어(0451): 전 법인 content_key 중복감지 = 의도된 글로벌 집계(cron 실행·사용자 entity 컨텍스트 없음)
   'FROM bank_transactions GROUP BY content_key HAVING COUNT(*) > 1',
+  // ar-payments.ts PUT /payment/:id 통장 연결 가드(2026-09-27): 입금은 직전에 entityFilter 로 소유 검증됨. 그 입금 id 로 연결 통장을
+  //   찾는 존재 확인이라 법인 필터를 걸면 오히려 타 법인 통장에 붙은 입금을 놓친다(가드가 뚫린다)
+  'FROM bank_transactions WHERE matched_payment_id = ? LIMIT 1',
 ]
 
 function isCompliant(sql, fileSrc) {

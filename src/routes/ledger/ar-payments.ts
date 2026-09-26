@@ -148,6 +148,19 @@ arPaymentsRouter.put('/payment/:id', requireEditOrRole('/ledger', 'MANAGER'), as
       return c.json({ success: false, error: '입금액은 0보다 커야 합니다' }, 400)
     }
 
+    // 통장과 연결된 입금은 금액·일자를 못 바꾼다(2026-09-27) — 통장 거래가 정본이라, 여기만 바꾸면 통장↔입금 대사가
+    //   조용히 어긋나고 적용취소(cancel-apply)가 바뀐 금액의 입금을 지운다. 연결을 풀고(적용취소) 다시 적용한다.
+    const amountChanged = body.amount !== undefined && Math.abs(Number(body.amount) - Number(existing.amount)) >= 0.01
+    const dateChanged = !!body.payment_date && String(body.payment_date).slice(0, 10) !== String(existing.payment_date || '').slice(0, 10)
+    if (amountChanged || dateChanged) {
+      const bankLinked = await c.env.DB.prepare(
+        `SELECT 1 FROM bank_transactions WHERE matched_payment_id = ? LIMIT 1`
+      ).bind(id).first()
+      if (bankLinked) {
+        return c.json({ success: false, error: '통장과 연결된 입금은 금액·일자를 바꿀 수 없습니다. 연결을 해제한 뒤 수정하세요.' }, 400)
+      }
+    }
+
     // Calculate balance adjustment: old payment restored, new payment applied
     const amountDiff = newAmount - existing.amount
 

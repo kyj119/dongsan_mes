@@ -124,9 +124,6 @@ export function ledgerPage(c: Context<HonoEnv>) {
                         <i class="fas fa-exclamation-triangle text-orange-500 mr-2"></i>잔액 불일치 <span id="integrityCount" class="bg-orange-600 text-white px-2 py-0.5 rounded-full text-xs ml-1">0</span>
                     </h2>
                     <div class="flex gap-2">
-                        <button onclick="fixAllIntegrity()" class="ds-btn ds-btn-sm" style="background:#dc2626;color:white;font-size:12px">
-                            <i class="fas fa-wrench mr-1"></i>일괄 수정
-                        </button>
                         <button onclick="document.getElementById('integrityPanel').classList.add('hidden')" class="ds-btn ds-btn-ghost ds-btn-sm text-xs">닫기</button>
                     </div>
                 </div>
@@ -134,10 +131,9 @@ export function ledgerPage(c: Context<HonoEnv>) {
                     <table class="ds-table ds-table-compact ds-table-striped">
                         <thead><tr>
                             <th class="text-left">거래처</th>
-                            <th class="text-right">캐시 잔액</th>
-                            <th class="text-right">실계산 잔액</th>
+                            <th class="text-right">목록 잔액</th>
+                            <th class="text-right">거래처별 파생 잔액</th>
                             <th class="text-right">차이</th>
-                            <th class="text-center">조치</th>
                         </tr></thead>
                         <tbody id="integrityBody"></tbody>
                     </table>
@@ -306,7 +302,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                 </h2>
                 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
                     <div class="ds-card ds-card-compact">
-                        <div class="ds-label mb-1">이번달 매출</div>
+                        <div class="ds-label mb-1">이번달 청구액(매출)</div>
                         <div class="text-lg font-bold text-gray-700 tabular-nums text-right" id="closingSales">-</div>
                         <div class="text-xs text-right mt-1" id="closingSalesDiff"></div>
                     </div>

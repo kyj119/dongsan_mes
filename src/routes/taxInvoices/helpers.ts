@@ -303,7 +303,10 @@ export async function issueTaxInvoice(
   // P4 split billing: 이 계산서(법인)의 청구그룹만 BILLED + group↔invoice 연결.
   // orders 미러는 그 주문의 전(全) 그룹이 BILLED/PAID일 때만 갱신(혼합주문 부분청구 대응).
   // 가드: NULL(미청구)도 매칭하도록 IS NOT 사용(SQLite `NULL != 'BILLED'`=NULL 버그 회피).
-  try {
+  // ★음수 수정발행(취소·환입·이중발급 = 3·4·6)은 청구하지 않는다(2026-09-27) — 원본 연결 주문을 그대로 물려받으므로,
+  //   원본 청구를 먼저 손으로 취소해 둔 경우 이 단계가 미청구 그룹을 **마이너스 계산서로 다시 BILLED** 로 만들었다.
+  const isNegativeModify = existing.invoice_type === 'MODIFY' && Number(existing.total_amount) < 0
+  if (!isNegativeModify) try {
     const invEntity = Number(updated?.entity_id) || Number(existing.entity_id) || null
     const { results: linkedOrders } = await db.prepare(
       `SELECT order_id FROM tax_invoice_orders WHERE tax_invoice_id = ?`
@@ -342,7 +345,96 @@ export async function issueTaxInvoice(
     console.error('[taxInvoices] billing_status 업데이트 실패 — 수동 확인 필요 (invoice:', taxInvoiceId, '):', _billingErr)
   }
 
-  return { success: true, data: { ...updated, items } }
+  // 취소발행(수정 4 = 계약의 해제, 전액 마이너스)이 **발행된 순간** 원 계산서의 청구를 되돌린다(2026-09-27 결정).
+  //   수정발행은 DRAFT 로 먼저 만들어지고(issue.ts POST /:id/modify) 여기서 ISSUED/SENT 가 되므로, 적용 지점은 생성이 아니라 여기다.
+  //   종전엔 계산서만 상쇄되고 청구그룹은 BILLED 로 남아 미수가 그대로였다(손으로 회계반영 취소를 해야 했다).
+  let billingResetWarning: string | null = null
+  if (updated && (updated.status === 'SENT' || updated.status === 'ISSUED')
+      && existing.invoice_type === 'MODIFY' && String(existing.modify_code) === '4' && existing.original_invoice_id) {
+    try {
+      await resetBillingAfterFullCancel(db, Number(existing.original_invoice_id))
+    } catch (resetErr) {
+      console.error('[taxInvoices] 취소발행 후 청구 되돌리기 실패 (original:', existing.original_invoice_id, '):', resetErr)
+      billingResetWarning = '취소발행은 됐지만 청구(회계반영) 되돌리기에 실패했습니다. 주문의 회계반영을 직접 취소하세요.'
+    }
+  }
+
+  return { success: true, data: { ...updated, items, ...(billingResetWarning && { warning: billingResetWarning }) } }
+}
+
+// ── 취소발행으로 순액이 0 이하가 된 원 계산서의 청구그룹을 미청구로 되돌린다 ──
+// 로컬 취소(issue.ts POST /:id/cancel)와 같은 되돌리기지만 **tax_invoice_id 링크는 남긴다** — 계산서 묶음(원본+수정)은
+//   국세청에 남아 있는 기록이고, countLiveInvoicesForOrder·ordersAlreadyInvoiced 가 그 묶음의 순액(0)을 보고
+//   「살아 있는 계산서 없음」으로 판정해야 재청구·재발행·주문취소가 열린다. 링크를 끊으면 그 판단 근거가 사라진다.
+// 순액 판정은 원본+수정발행 전부(작성 중·실패·취소 제외) — 부분 수정(3 환입 등)이 섞여도 합이 0 이하일 때만 되돌린다.
+// 전부 한 batch — 그룹만 풀리고 주문 미러가 BILLED 로 남는 반쪽 상태를 만들지 않는다.
+export async function resetBillingAfterFullCancel(db: D1Database, originalInvoiceId: number): Promise<number> {
+  const fam = await db.prepare(
+    `SELECT COALESCE(SUM(total_amount), 0) AS net FROM tax_invoices
+     WHERE (id = ? OR original_invoice_id = ?) AND status NOT IN ('CANCELLED', 'DRAFT', 'FAILED', 'ISSUING')`
+  ).bind(originalInvoiceId, originalInvoiceId).first<{ net: number }>()
+  if (Number(fam?.net) > 0) return 0
+
+  let groups = (await db.prepare(
+    `SELECT g.id AS group_id, g.order_id, o.order_type
+     FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+     WHERE g.tax_invoice_id = ? AND g.billing_status IN ('BILLED','PAID')`
+  ).bind(originalInvoiceId).all<{ group_id: number; order_id: number; order_type: string | null }>()).results || []
+
+  if (groups.length === 0) {
+    // 레거시(그룹 미연결) 폴백 — 로컬 취소 경로와 같은 규칙: 연결 주문 × 원 계산서 법인 × 미연결 그룹
+    const inv = await db.prepare(`SELECT entity_id FROM tax_invoices WHERE id = ?`).bind(originalInvoiceId).first<{ entity_id: number }>()
+    const { results: linkedOrders } = await db.prepare(
+      `SELECT DISTINCT order_id FROM tax_invoice_orders WHERE tax_invoice_id = ?
+       UNION SELECT order_id FROM tax_invoices WHERE id = ? AND order_id IS NOT NULL`
+    ).bind(originalInvoiceId, originalInvoiceId).all<{ order_id: number }>()
+    const oids = (linkedOrders || []).map(r => Number(r.order_id)).filter(Boolean)
+    if (oids.length > 0 && inv?.entity_id) {
+      for (let oi = 0; oi < oids.length; oi += 80) {
+        const oChunk = oids.slice(oi, oi + 80)
+        const gr = await db.prepare(
+          `SELECT g.id AS group_id, g.order_id, o.order_type FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+           WHERE g.order_id IN (${oChunk.map(() => '?').join(',')}) AND g.entity_id = ?
+             AND g.tax_invoice_id IS NULL AND g.billing_status IN ('BILLED','PAID')`
+        ).bind(...oChunk, inv.entity_id).all<{ group_id: number; order_id: number; order_type: string | null }>()
+        groups.push(...(gr.results || []))
+      }
+    }
+  }
+  if (groups.length === 0) return 0
+
+  const groupIds = groups.map(g => g.group_id)
+  const affectedOrders = [...new Set(groups.map(g => g.order_id))]
+  const directBackup = [...new Set(groups.filter(g => g.order_type === 'DIRECT_INVOICE').map(g => g.order_id))]
+  const stmts: D1PreparedStatement[] = []
+  for (let i = 0; i < groupIds.length; i += 80) {
+    const gChunk = groupIds.slice(i, i + 80)
+    stmts.push(db.prepare(
+      `UPDATE order_billing_groups SET billing_status = NULL, billed_at = NULL, billed_by = NULL, accounting_date = NULL
+       WHERE id IN (${gChunk.map(() => '?').join(',')})`
+    ).bind(...gChunk))
+  }
+  for (let i = 0; i < affectedOrders.length; i += 80) {
+    const oChunk = affectedOrders.slice(i, i + 80)
+    stmts.push(db.prepare(
+      `UPDATE orders SET billing_status = CASE WHEN NOT EXISTS (
+           SELECT 1 FROM order_billing_groups g WHERE g.order_id = orders.id AND COALESCE(g.billing_status,'') NOT IN ('BILLED','PAID')
+         ) THEN 'BILLED' ELSE NULL END,
+         accounting_date = CASE WHEN NOT EXISTS (
+           SELECT 1 FROM order_billing_groups g WHERE g.order_id = orders.id AND COALESCE(g.billing_status,'') NOT IN ('BILLED','PAID')
+         ) THEN accounting_date ELSE NULL END,
+         updated_at = CURRENT_TIMESTAMP WHERE id IN (${oChunk.map(() => '?').join(',')})`
+    ).bind(...oChunk))
+  }
+  // 직접발행(#310) 백업 주문은 계산서 말고는 실체가 없다 — 주문 자체를 취소해 미수 파생에서 뺀다(로컬 취소와 동일).
+  for (let i = 0; i < directBackup.length; i += 80) {
+    const dChunk = directBackup.slice(i, i + 80)
+    stmts.push(db.prepare(
+      `UPDATE orders SET status = 'CANCELLED', billing_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id IN (${dChunk.map(() => '?').join(',')})`
+    ).bind(...dChunk))
+  }
+  await db.batch(stmts)
+  return groupIds.length
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -532,3 +624,43 @@ export async function ordersAlreadyInvoiced(db: D1Database, orderIds: number[]):
   }
   return hit
 }
+
+// ── 작성 중(DRAFT·발행 중 ISSUING)인 계산서가 걸린 주문 ──
+// ordersAlreadyInvoiced 는 **발행된** 것의 순액만 본다(DRAFT·FAILED 제외) — 그래서 DRAFT 가 있는 주문에 DRAFT 를 또 만들 수 있었고,
+//   둘 다 발행하면 같은 주문이 두 번 청구됐다(2026-09-26 점검). 새 작성본을 만들기 전에 이것도 본다(2026-09-27).
+//   연결 경로 셋(tax_invoices.order_id · tax_invoice_orders · order_billing_groups.tax_invoice_id)을 전부 본다 —
+//   countLiveInvoicesForOrder 와 같은 범위. FAILED 는 뺀다: 실패본은 고쳐 재발행하거나 버리고 새로 만드는 것이 정상 절차다.
+export async function ordersWithDraftInvoice(db: D1Database, orderIds: number[]): Promise<number[]> {
+  const hit = new Set<number>()
+  for (let i = 0; i < orderIds.length; i += 80) {
+    const chunk = orderIds.slice(i, i + 80).map(Number)
+    const ph = chunk.map(() => '?').join(',')
+    const { results } = await db.prepare(
+      `SELECT ti.order_id AS order_id FROM tax_invoices ti
+         WHERE ti.status IN ('DRAFT', 'ISSUING') AND ti.order_id IN (${ph})
+       UNION SELECT tio.order_id FROM tax_invoice_orders tio JOIN tax_invoices ti ON ti.id = tio.tax_invoice_id
+         WHERE ti.status IN ('DRAFT', 'ISSUING') AND tio.order_id IN (${ph})`
+    ).bind(...chunk, ...chunk).all<{ order_id: number }>()
+    for (const r of results || []) hit.add(Number(r.order_id))
+    const { results: gRows } = await db.prepare(
+      `SELECT g.order_id FROM order_billing_groups g JOIN tax_invoices ti ON ti.id = g.tax_invoice_id
+         WHERE ti.status IN ('DRAFT', 'ISSUING') AND g.order_id IN (${ph})`
+    ).bind(...chunk).all<{ order_id: number }>()
+    for (const r of gRows || []) hit.add(Number(r.order_id))
+  }
+  return [...hit]
+}
+
+export const DRAFT_INVOICE_EXISTS_ERROR = '작성 중인 세금계산서가 있습니다. 기존 작성본을 발행하거나 삭제한 뒤 다시 만드세요.'
+
+// ── 계산서 대상 목록(eligible·월합산)에서 뺄 주문 id 서브쿼리 ──
+// 종전 규칙은 「CANCELLED 아닌 계산서가 하나라도 있으면 제외」라, 취소발행(수정 4)으로 순액이 0 이 된 주문이 영영
+//   다시 발행 대상에 못 들어왔다. 발행 가드(ordersAlreadyInvoiced 순액 + ordersWithDraftInvoice)와 같은 규칙으로 맞춘다(2026-09-27).
+//   FAILED 는 목록에서는 계속 뺀다 — 일괄 생성(월합산)이 실패본 옆에 새 작성본을 자동으로 만들지 않게.
+export const INVOICED_ORDER_IDS_SQL = `
+  SELECT tio.order_id FROM tax_invoice_orders tio JOIN tax_invoices ti ON tio.tax_invoice_id = ti.id
+  WHERE ti.status IN ('DRAFT', 'ISSUING', 'FAILED')
+  UNION
+  SELECT tio.order_id FROM tax_invoice_orders tio JOIN tax_invoices ti ON tio.tax_invoice_id = ti.id
+  WHERE ti.status NOT IN ('CANCELLED', 'DRAFT', 'FAILED')
+  GROUP BY tio.order_id HAVING SUM(ti.total_amount) > 0`

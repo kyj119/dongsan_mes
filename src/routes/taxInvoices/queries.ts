@@ -10,7 +10,7 @@ import type { HonoEnv } from '../../types/env'
 import { authMiddleware } from '../../middleware/auth'
 import { requireAccessOrRole } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
-import { getTaxProvider, getCompanySettings } from './helpers'
+import { getTaxProvider, getCompanySettings, INVOICED_ORDER_IDS_SQL } from './helpers'
 import { kstYm } from '../../utils/kstDate'
 import type { EligibleOrderRow } from './helpers'
 
@@ -204,7 +204,7 @@ taxInvoicesQueriesRouter.get('/eligible-orders', async (c) => {
     const params: any[] = []
     const whereClauses: string[] = [
       `o.status IN ('CONFIRMED', 'PRINTING', 'PRINT_DONE', 'SHIPPED')`,
-      `o.id NOT IN (SELECT tio.order_id FROM tax_invoice_orders tio JOIN tax_invoices ti ON tio.tax_invoice_id = ti.id WHERE ti.status != 'CANCELLED')`,
+      `o.id NOT IN (${INVOICED_ORDER_IDS_SQL})`,   // 발행 가드와 같은 규칙(순액·작성 중) — helpers
       `COALESCE(c.invoice_method, 'PER_ORDER') NOT IN ('CARD', 'ISSUED_BY_OTHER')`
     ]
 
@@ -404,11 +404,7 @@ taxInvoicesQueriesRouter.get('/monthly-eligible', async (c) => {
       WHERE c.invoice_method = 'MONTHLY'
         AND o.order_date >= ? AND o.order_date <= ?
         AND o.status IN ('CONFIRMED', 'PRINTING', 'PRINT_DONE', 'SHIPPED')
-        AND o.id NOT IN (
-          SELECT tio.order_id FROM tax_invoice_orders tio
-          JOIN tax_invoices ti ON tio.tax_invoice_id = ti.id
-          WHERE ti.status != 'CANCELLED'
-        )${efMonthly.clause}
+        AND o.id NOT IN (${INVOICED_ORDER_IDS_SQL})${efMonthly.clause}
       ORDER BY c.client_name ASC, o.order_date ASC, o.id ASC
     `).bind(dateFrom, dateTo, ...efMonthly.params).all()
 

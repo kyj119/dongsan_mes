@@ -751,7 +751,7 @@ ordersCreateRouter.post('/', async (c) => {
 //  · 기존 품목/카드/생산은 건드리지 않음 — 신규 라인만 INSERT → 신규 라인만 카드 생성(itemIdsFilter).
 //  · 가드: 주문 소유 법인(entityFilter) + 상태 '출력완료(PRINT_DONE)'까지만 허용.
 //          차단: SHIPPED/COMPLETED/CANCELLED/QUOTATION/DRAFT.
-//  · 청구: recalcOrderBillingGroups(동결 그룹 보존) — 이미 BILLED면 신규 라인은 미청구/별도 청구(경고 반환).
+//  · 청구: 회계반영(BILLED/PAID)된 주문은 400 거절(2026-09-27). 그 외 recalcOrderBillingGroups 로 그룹 재계산.
 //  · 가공: ai_file_path → AI_PROCESS task, ai_analysis_id 보유 라인 → auto_process_jobs(에이전트 폴링 큐).
 ordersCreateRouter.post('/:id/items', async (c) => {
   try {
@@ -791,6 +791,15 @@ ordersCreateRouter.post('/:id/items', async (c) => {
     if (!APPENDABLE.includes(order.status)) {
       const label = ORDER_STATUS_LABELS[order.status] || order.status
       return c.json({ success: false, error: `'${label}' 상태 주문에는 품목을 추가할 수 없습니다 (출력완료까지만 허용).` }, 409)
+    }
+
+    // 회계반영(청구)된 주문에는 라인을 붙이지 않는다(2026-09-27 결정 — PUT 금액 잠금과 같은 정책).
+    //   종전엔 경고만 내고 추가했는데, 청구그룹이 동결이라 새 라인 금액은 미수에 안 잡히고 「별도 청구」할 경로도 없었다.
+    const appendBilled = order.billing_status === 'BILLED' || order.billing_status === 'PAID' || !!(await c.env.DB.prepare(
+      `SELECT 1 FROM order_billing_groups WHERE order_id = ? AND billing_status IN ('BILLED','PAID') LIMIT 1`
+    ).bind(orderId).first())
+    if (appendBilled) {
+      return c.json({ success: false, error: '회계반영된 주문의 금액은 바꿀 수 없습니다. 회계반영을 취소한 뒤 수정하세요.' }, 400)
     }
 
     const billingEntityId = Number(order.entity_id) || (getEntityId(c) || 1)
@@ -934,13 +943,10 @@ ordersCreateRouter.post('/:id/items', async (c) => {
       actorEntityId: getEntityId(c)
     })
 
-    const warning = (order.billing_status === 'BILLED' || order.billing_status === 'PAID')
-      ? '이미 청구된 주문입니다. 추가된 라인은 별도 청구가 필요합니다.' : null
     return c.json({
       success: true,
       data: { order_id: orderId, order_number: order.order_number, added: newItemIds.length, cards_generated: cardsGenerated },
       message: `${order.order_number}에 ${newItemIds.length}개 라인 추가 (카드 ${cardsGenerated}건).`,
-      ...(warning && { warning }),
     })
   } catch (error) {
     console.error('Order append items error:', error)
