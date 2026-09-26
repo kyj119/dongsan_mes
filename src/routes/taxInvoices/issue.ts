@@ -27,6 +27,25 @@ taxInvoicesIssueRouter.use('/*', authMiddleware, requireAccessOrRole('/tax-invoi
 // 로 자동 생성하고 clients.balance를 증액한다. (단일 진실 공급원 = orders/AR)
 // 취소 시 POST /:id/cancel 에서 이 백업 주문을 CANCELLED + balance 롤백한다.
 // ============================================================================
+
+/**
+ * 이미 유효한(취소 안 된) 계산서에 묶인 주문 — POST / 의 중복 발행 가드.
+ * monthly-create(`batch.ts`)의 NOT IN 과 같은 조건이다. 이 경로만 없어서 같은 주문이 두 번 발행될 수 있었다.
+ */
+async function ordersAlreadyInvoiced(db: D1Database, orderIds: number[]): Promise<number[]> {
+  const hit: number[] = []
+  for (let i = 0; i < orderIds.length; i += 80) {
+    const chunk = orderIds.slice(i, i + 80)
+    const { results } = await db.prepare(
+      `SELECT DISTINCT tio.order_id FROM tax_invoice_orders tio
+       JOIN tax_invoices ti ON tio.tax_invoice_id = ti.id
+       WHERE ti.status != 'CANCELLED' AND tio.order_id IN (${chunk.map(() => '?').join(',')})`
+    ).bind(...chunk).all<{ order_id: number }>()
+    for (const r of results || []) hit.push(Number(r.order_id))
+  }
+  return hit
+}
+
 taxInvoicesIssueRouter.post('/direct', requireEditOrRole('/tax-invoices', 'MANAGER'), async (c) => {
   try {
     const body = await c.req.json<{
@@ -330,6 +349,7 @@ taxInvoicesIssueRouter.post('/', requireEditOrRole('/tax-invoices', 'MANAGER'), 
       // 주문 목록 조회
       // 80 청크 (#657) - body.order_ids 직결이고 상한 가드가 없다. prod 실측 한 거래처 한 달 최대 118건이라
       //   가드로 막으면 실제 청구가 막힌다. 아래 개수 대조는 누적 후에 하므로 뜻이 그대로다.
+      const efIssue = entityFilter(c, 'o')   // #581 법인 가드 — batch-create 와 같은 범위(타 법인 주문은 「존재하지 않음」으로 떨어진다)
       const orders: any[] = []
       for (let oi = 0; oi < orderIds.length; oi += 80) {
         const oChunk = orderIds.slice(oi, oi + 80)
@@ -341,8 +361,8 @@ taxInvoicesIssueRouter.post('/', requireEditOrRole('/tax-invoices', 'MANAGER'), 
             (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM order_items WHERE order_id = o.id AND price_status = 'PENDING') as has_pending_prices
           FROM orders o
           LEFT JOIN clients c ON o.client_id = c.id
-          WHERE o.id IN (${placeholders})
-        `).bind(...oChunk).all()
+          WHERE o.id IN (${placeholders})${efIssue.clause}
+        `).bind(...oChunk, ...efIssue.params).all()
         orders.push(...(orow.results || []))
       }
 
@@ -351,6 +371,10 @@ taxInvoicesIssueRouter.post('/', requireEditOrRole('/tax-invoices', 'MANAGER'), 
       }
       if (orders.length !== orderIds.length) {
         return c.json({ success: false, error: '일부 주문이 존재하지 않습니다.' }, 400)
+      }
+      const dupBundle = await ordersAlreadyInvoiced(c.env.DB, orderIds)
+      if (dupBundle.length > 0) {
+        return c.json({ success: false, error: `이미 세금계산서가 발행된 주문이 포함되어 있습니다(${dupBundle.length}건). 먼저 기존 계산서를 취소하세요.`, data: { order_ids: dupBundle } }, 400)
       }
 
       // 단가 미정 주문 검증
@@ -406,17 +430,21 @@ taxInvoicesIssueRouter.post('/', requireEditOrRole('/tax-invoices', 'MANAGER'), 
     // ──────────────────────────────────────────────
     // 단건 발행 로직 (하위호환)
     // ──────────────────────────────────────────────
+    const efSingle = entityFilter(c, 'o')   // #581 법인 가드
     const order = await c.env.DB.prepare(`
       SELECT o.*, c.client_name, c.business_registration_number,
         c.representative, c.address, c.business_type, c.business_item,
         c.email as client_email, c.id as client_id
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
-      WHERE o.id = ?
-    `).bind(body.order_id).first<OrderWithClient>()
+      WHERE o.id = ?${efSingle.clause}
+    `).bind(body.order_id, ...efSingle.params).first<OrderWithClient>()
 
     if (!order) {
       return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
+    }
+    if ((await ordersAlreadyInvoiced(c.env.DB, [Number(body.order_id)])).length > 0) {
+      return c.json({ success: false, error: '이미 세금계산서가 발행된 주문입니다. 먼저 기존 계산서를 취소하세요.' }, 400)
     }
     if (!order.business_registration_number) {
       return c.json({ success: false, error: '거래처에 사업자등록번호가 등록되어 있지 않습니다.' }, 400)
@@ -689,25 +717,29 @@ taxInvoicesIssueRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: '발행 또는 전송 완료 상태의 세금계산서만 취소할 수 있습니다.' }, 400)
     }
 
-    await c.env.DB.prepare(`
-      UPDATE tax_invoices
-      SET status = 'CANCELLED',
-          cancelled_at = CURRENT_TIMESTAMP,
-          cancelled_by = ?,
-          cancel_reason = ?,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).bind(user.id, cancel_reason || null, id).run()
-
-    // #443: 발행취소 시 연결된 입금(payments.tax_invoice_id)을 정리 — dangling 링크 제거 +
-    //   입금 자동제안(Phase3 매칭)에서 영구 제외되던 문제 해소. 청구그룹 유무와 무관하게 무조건 실행.
-    await c.env.DB.prepare(
-      `UPDATE payments SET tax_invoice_id = NULL WHERE tax_invoice_id = ?`
-    ).bind(id).run()
+    // ★계산서 취소·입금 링크 해제·청구그룹 초기화를 **한 batch** 로 — 예전엔 셋이 따로 커밋되고
+    //   그룹 초기화 실패는 console.warn 으로 삼킨 채 success 를 돌려줘, 「계산서는 취소됐는데 주문은 BILLED」
+    //   가 조용히 남았다(미수·재발행 둘 다 막힌다). 이제 실패하면 전부 안 되고 500 이 난다.
+    const cancelStmts: D1PreparedStatement[] = [
+      c.env.DB.prepare(`
+        UPDATE tax_invoices
+        SET status = 'CANCELLED',
+            cancelled_at = CURRENT_TIMESTAMP,
+            cancelled_by = ?,
+            cancel_reason = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).bind(user.id, cancel_reason || null, id),
+      // #443: 발행취소 시 연결된 입금(payments.tax_invoice_id)을 정리 — dangling 링크 제거 +
+      //   입금 자동제안(Phase3 매칭)에서 영구 제외되던 문제 해소. 청구그룹 유무와 무관하게 무조건 실행.
+      c.env.DB.prepare(
+        `UPDATE payments SET tax_invoice_id = NULL WHERE tax_invoice_id = ?`
+      ).bind(id),
+    ]
 
     // P4 split billing: 이 계산서가 청구한 청구그룹만 초기화 (group.tax_invoice_id = id).
     // 타 법인 그룹·계산서는 불변 → "다른 유효 계산서" 체크는 그룹 스코프로 자연 처리.
-    try {
+    {
       // 정상 경로: 발행 시 연결된 그룹. 레거시 미연결 폴백: 연결주문 × 이 계산서 법인 그룹.
       let groups = (await c.env.DB.prepare(
         `SELECT g.id as group_id, g.order_id, o.order_type
@@ -746,7 +778,6 @@ taxInvoicesIssueRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
         const directBackup = [...new Set(groups.filter(g => g.order_type === 'DIRECT_INVOICE').map(g => g.order_id))]
         // 80 청크 (#657) - 「한 계산서의 청구그룹 id」는 상한이 아니다. 묶음 발행이면 주문 수만큼 붙는다.
         //   ★청크를 **문장으로만** 나누고 batch 는 그대로 하나로 둔다 - 취소는 전부 되거나 전부 안 돼야 한다.
-        const cancelStmts: any[] = []
         for (let i = 0; i < groupIds.length; i += 80) {
           const gph = groupIds.slice(i, i + 80).map(() => '?').join(',')
           cancelStmts.push(c.env.DB.prepare(
@@ -772,11 +803,9 @@ taxInvoicesIssueRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
             `UPDATE orders SET status = 'CANCELLED', billing_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id IN (${dph})`
           ).bind(...directBackup.slice(i, i + 80)))
         }
-        if (cancelStmts.length > 0) await c.env.DB.batch(cancelStmts)
       }
-    } catch (_err) {
-      console.warn('세금계산서 취소 - 청구그룹 초기화 오류:', _err)
     }
+    await c.env.DB.batch(cancelStmts)
 
     const updated = await c.env.DB.prepare(`
       SELECT ti.*, o.order_number, o.billing_status FROM tax_invoices ti

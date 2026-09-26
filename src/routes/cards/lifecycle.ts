@@ -80,6 +80,24 @@ async function maybeAutoCompleteCard(db: D1Database, cardId: number, userId: num
   return true
 }
 
+/**
+ * syncOrderStatusFromCards 가 PRINT_DONE 에서 세운 order_items.shipment_ready=1 의 **짝**.
+ * 카드가 PRINT_DONE 에서 물러나면(revert·출력 체크 해제) 그 카드의 라인을 되돌린다 —
+ * 단, 같은 라인을 가진 **다른** 카드가 아직 PRINT_DONE 이면 그대로 둔다.
+ * 짝이 없던 동안은 한 번 선 출고 준비가 영영 안 내려가 미출력 라인이 출고 게이트를 통과했다.
+ */
+async function clearShipmentReadyForCard(db: D1Database, cardId: number) {
+  await db.prepare(`
+    UPDATE order_items SET shipment_ready = 0
+    WHERE id IN (SELECT order_item_id FROM card_items WHERE card_id = ?)
+      AND COALESCE(shipment_ready, 0) = 1
+      AND NOT EXISTS (
+        SELECT 1 FROM card_items ci JOIN cards c2 ON c2.id = ci.card_id
+        WHERE ci.order_item_id = order_items.id AND c2.status = 'PRINT_DONE' AND c2.id != ?
+      )
+  `).bind(cardId, cardId).run()
+}
+
 // 정본 — printEvents(에이전트 경로)도 이것을 부른다. 사본을 만들지 말 것(사본이 SHIPPED/CANCELLED 스킵·조건부 UPDATE·이력을 빠뜨렸다).
 export async function syncOrderStatusFromCards(db: D1Database, orderId: number) {
   // Option B: 단일 SELECT로 카드+주문 상태를 원자적 스냅샷으로 조회
@@ -476,6 +494,95 @@ cardsLifecycleRouter.post('/bulk-ship', async (c) => {
 })
 
 // QR 출고 처리 — card_id(숫자) 또는 card_number(CARD-YYYYMMDD-NNN)로 출고
+
+/**
+ * 카드 1장 출고 — POST /:id/ship 과 스캔 출고(scan.ts CARD:ship)의 **공용 본체**.
+ * 스캔 경로가 shipped_at 만 찍고 상태 확인·후가공 확인·주문 SHIPPED 전이·재고 차감·출고 기록·청구 타이밍을
+ * 전부 건너뛰고 있었다(2026-09-26 리뷰). 경로가 둘이면 규칙도 둘이 된다 → 한 함수로.
+ */
+export interface CardShipRow { id: number; status: string; order_id: number; card_number: string; shipped_at: string | null }
+export async function shipCard(c: Context<HonoEnv>, card: CardShipRow, force: boolean): Promise<Response> {
+  const user = c.get('user')
+  if (card.status !== 'PRINT_DONE') {
+    return c.json({
+      success: false,
+      error: `출고 처리는 PRINT_DONE 상태에서만 가능합니다. 현재 상태: ${card.status}`
+    }, 400)
+  }
+
+  if (card.shipped_at) {
+    return c.json({ success: false, error: '이미 출고 처리된 카드입니다.' }, 409)
+  }
+
+  // 후가공 미완료 체크
+  const cardFull = await c.env.DB.prepare('SELECT pp_status FROM cards WHERE id = ?').bind(card.id).first<{ pp_status: string | null }>()
+  if (cardFull?.pp_status === 'PENDING') {
+    if (!force) {
+      return c.json({
+        success: false,
+        error: '후가공이 완료되지 않은 카드입니다. 강제 출고하려면 force: true를 전달하세요.',
+        pp_pending: true
+      }, 400)
+    }
+  }
+
+  // shipped_at 설정으로 출고 처리
+  await c.env.DB.prepare(
+    'UPDATE cards SET shipped_at = CURRENT_TIMESTAMP WHERE id = ?'
+  ).bind(card.id).run()
+
+  // 해당 주문의 모든 카드 출고 여부 확인
+  const progress = await c.env.DB.prepare(`
+    SELECT COUNT(*) as total,
+           SUM(CASE WHEN shipped_at IS NOT NULL THEN 1 ELSE 0 END) as shipped_count
+    FROM cards WHERE order_id = ?
+  `).bind(card.order_id).first<{ total: number; shipped_count: number }>()
+
+  let orderShipped = false
+  if (progress && progress.total > 0 && progress.total === progress.shipped_count) {
+    const order = await c.env.DB.prepare(
+      'SELECT status, entity_id, delivery_method FROM orders WHERE id = ?'
+    ).bind(card.order_id).first<{ status: string; entity_id: number | null; delivery_method: string | null }>()
+
+    if (order && order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
+      // 기성/유통 라인 재고 차감 (멱등) — 위 bulk-ship 과 같은 규칙
+      await deductStockLinesOnShip(c.env.DB, Number(card.order_id), order.entity_id || getEntityId(c) || 1)
+      await c.env.DB.batch([
+        c.env.DB.prepare(`
+          UPDATE orders SET status = 'SHIPPED', shipped_at = COALESCE(shipped_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?
+        `).bind(card.order_id),
+        c.env.DB.prepare(`
+          INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
+          VALUES (?, ?, 'SHIPPED', ?, '카드 전체 출고 완료 자동 처리')
+        `).bind(card.order_id, order.status, user?.id ?? null),
+      ])
+      // 청구 타이밍 스탬프(2026-09-17) — 주문 일괄 출고와 **같은 식**.
+      await applyShipBillingDates(c.env.DB, Number(card.order_id), order.delivery_method)
+
+      orderShipped = true
+    }
+  }
+
+  // P1 출고 정합화: QR 출고도 shipment 기록 동기 (실패해도 출고 유지)
+  try {
+    await ensureShipmentForOrder(c.env.DB, card.order_id, { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1 })
+  } catch (shipRecErr) {
+    console.error('QR ship ensureShipment error:', shipRecErr)
+  }
+
+  return c.json({
+    success: true,
+    data: {
+      card_id: card.id,
+      card_number: card.card_number,
+      order_shipped: orderShipped
+    },
+    message: orderShipped
+      ? '카드 출고 처리 완료. 주문이 출고완료 상태로 변경되었습니다.'
+      : '카드 출고 처리 완료'
+  })
+}
+
 cardsLifecycleRouter.post('/:id/ship', async (c) => {
   try {
     const idParam = c.req.param('id')
@@ -484,7 +591,6 @@ cardsLifecycleRouter.post('/:id/ship', async (c) => {
     // card_number 패턴 여부 확인
     const isCardNumber = /^CARD-\d{8}-\d{3,}$/i.test(idParam)
 
-    interface CardShipRow { id: number; status: string; order_id: number; card_number: string; shipped_at: string | null }
     const ef = cardEntityScope(c)  // #432: 타 법인 카드 출고 차단
     const card = isCardNumber
       ? await c.env.DB.prepare(`
@@ -498,85 +604,8 @@ cardsLifecycleRouter.post('/:id/ship', async (c) => {
       return c.json({ success: false, error: 'Card not found' }, 404)
     }
 
-    if (card.status !== 'PRINT_DONE') {
-      return c.json({
-        success: false,
-        error: `출고 처리는 PRINT_DONE 상태에서만 가능합니다. 현재 상태: ${card.status}`
-      }, 400)
-    }
-
-    if (card.shipped_at) {
-      return c.json({ success: false, error: '이미 출고 처리된 카드입니다.' }, 409)
-    }
-
-    // 후가공 미완료 체크
-    const cardFull = await c.env.DB.prepare('SELECT pp_status FROM cards WHERE id = ?').bind(card.id).first<{ pp_status: string | null }>()
-    if (cardFull?.pp_status === 'PENDING') {
-      const body = await c.req.json().catch(() => ({})) as { force?: boolean }
-      if (!body?.force) {
-        return c.json({
-          success: false,
-          error: '후가공이 완료되지 않은 카드입니다. 강제 출고하려면 force: true를 전달하세요.',
-          pp_pending: true
-        }, 400)
-      }
-    }
-
-    // shipped_at 설정으로 출고 처리
-    await c.env.DB.prepare(
-      'UPDATE cards SET shipped_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(card.id).run()
-
-    // 해당 주문의 모든 카드 출고 여부 확인
-    const progress = await c.env.DB.prepare(`
-      SELECT COUNT(*) as total,
-             SUM(CASE WHEN shipped_at IS NOT NULL THEN 1 ELSE 0 END) as shipped_count
-      FROM cards WHERE order_id = ?
-    `).bind(card.order_id).first<{ total: number; shipped_count: number }>()
-
-    let orderShipped = false
-    if (progress && progress.total > 0 && progress.total === progress.shipped_count) {
-      const order = await c.env.DB.prepare(
-        'SELECT status, entity_id, delivery_method FROM orders WHERE id = ?'
-      ).bind(card.order_id).first<{ status: string; entity_id: number | null; delivery_method: string | null }>()
-
-      if (order && order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
-        // 기성/유통 라인 재고 차감 (멱등) — 위 bulk-ship 과 같은 규칙
-        await deductStockLinesOnShip(c.env.DB, Number(card.order_id), order.entity_id || getEntityId(c) || 1)
-        await c.env.DB.batch([
-          c.env.DB.prepare(`
-            UPDATE orders SET status = 'SHIPPED', shipped_at = COALESCE(shipped_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?
-          `).bind(card.order_id),
-          c.env.DB.prepare(`
-            INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
-            VALUES (?, ?, 'SHIPPED', ?, '카드 전체 출고 완료 자동 처리')
-          `).bind(card.order_id, order.status, user?.id ?? null),
-        ])
-        // 청구 타이밍 스탬프(2026-09-17) — 주문 일괄 출고와 **같은 식**.
-        await applyShipBillingDates(c.env.DB, Number(card.order_id), order.delivery_method)
-
-        orderShipped = true
-      }
-    }
-
-    // P1 출고 정합화: QR 출고도 shipment 기록 동기 (실패해도 출고 유지)
-    try {
-      await ensureShipmentForOrder(c.env.DB, card.order_id, { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1 })
-    } catch (shipRecErr) {
-      console.error('QR ship ensureShipment error:', shipRecErr)
-    }
-
-    return c.json({
-      success: true,
-      data: {
-        card_id: card.id,
-        card_number: card.card_number,
-        order_shipped: orderShipped
-      },
-      message: orderShipped
-        ? '카드 출고 처리 완료. 주문이 출고완료 상태로 변경되었습니다.'
-        : '카드 출고 처리 완료'
-    })
+    const force = !!(await c.req.json().catch(() => ({})) as { force?: boolean })?.force
+    return await shipCard(c, card, force)
   } catch (error) {
     console.error('cards/lifecycle GET user error:', error)
     return c.json({
@@ -674,13 +703,22 @@ cardsLifecycleRouter.patch('/:id/status', async (c) => {
 
     // Get current status and order_id
     const ef = cardEntityScope(c)  // #432: 타 법인 카드 상태변경 차단
-    const card = await c.env.DB.prepare(`SELECT status, order_id, card_number FROM cards WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{ status: string; order_id: number; card_number: string }>()
+    const card = await c.env.DB.prepare(`SELECT status, order_id, card_number, shipped_at FROM cards WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{ status: string; order_id: number; card_number: string; shipped_at: string | null }>()
 
     if (!card) {
       return c.json({
         success: false,
         error: 'Card not found'
       }, 404)
+    }
+    // bulk/status(#282)가 막는 두 가지를 단건도 막는다 — 단건 경로가 우회로였다.
+    //   ①출고된 카드는 상태를 바꾸지 않는다(출고취소 먼저) ②완료→출력중 역행은 /revert 로(자재 환원이 거기 있다).
+    //   (전이표 전체를 옮기지 않는 이유: 에이전트가 보고하는 PRINT_ERROR 경로를 막지 않기 위해)
+    if (card.shipped_at) {
+      return c.json({ success: false, error: '이미 출고된 카드입니다. 출고취소 후 변경해 주세요.' }, 400)
+    }
+    if (card.status === 'PRINT_DONE' && status === 'PRINTING') {
+      return c.json({ success: false, error: '출력완료 카드는 [출력 되돌리기]로 되돌려 주세요.' }, 400)
     }
 
     // Update card status with hold fields
@@ -1237,6 +1275,7 @@ cardsLifecycleRouter.patch('/:cardId/items/:itemId/print-toggle', async (c) => {
       await c.env.DB.prepare(
         "UPDATE cards SET status = 'PRINTING', print_done_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
       ).bind(cardId).run()
+      await clearShipmentReadyForCard(c.env.DB, Number(cardId))
       await syncOrderStatusFromCards(c.env.DB, ci.order_id)
     }
 
@@ -1350,6 +1389,7 @@ cardsLifecycleRouter.patch('/:id/revert', async (c) => {
       'UPDATE card_items SET print_completed = 0, print_completed_at = NULL, print_completed_by = NULL WHERE card_id = ?'
     ).bind(id).run()
 
+    await clearShipmentReadyForCard(c.env.DB, Number(id))
     // 주문 상태 동기화
     await syncOrderStatusFromCards(c.env.DB, card.order_id)
 

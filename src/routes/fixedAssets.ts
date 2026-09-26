@@ -209,6 +209,14 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
     ) latest ON dr.asset_id = latest.asset_id AND dr.period = latest.max_period
   `).all<{ asset_id: number; accumulated_depreciation: number; book_value: number }>()
   const latestMap = new Map(latestRecords.map(r => [r.asset_id, r]))
+  // ★빠진 달을 **나중에** 소급 실행하면 안 된다 — 위 기준(자산별 MAX(period))은 요청 달보다 **뒤** 기록일 수 있고,
+  //   그 뒤 기록들의 누계는 이 달을 빼고 쌓여 있다. 여기서 끼워 넣으면 누계·장부가가 두 갈래가 된다.
+  //   → 요청 달보다 뒤 기록이 있는 자산은 건너뛰고 응답에 밝힌다(소급은 뒤 기록을 지우고 순서대로 다시).
+  const { results: laterRows } = await c.env.DB.prepare(
+    `SELECT DISTINCT asset_id FROM depreciation_records WHERE period > ?`
+  ).bind(period).all<{ asset_id: number }>()
+  const hasLater = new Set(laterRows.map(r => r.asset_id))
+  const skippedLater: number[] = []
 
   // 정률법 기준액 = **연초 미상각잔액**. 세법은 사업연도 단위로
   //   상각액 = 연초 미상각잔액 × 상각률 × (보유월수/12) 를 계산하므로,
@@ -244,6 +252,7 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
 
   for (const asset of assets) {
     if (alreadyProcessed.has(asset.id)) continue
+    if (hasLater.has(asset.id)) { skippedLater.push(asset.id); continue }
 
     // 취득월 이전 기간은 상각하지 않는다. 이 가드가 없으면 4월 취득 자산에 1월분을
     //   태울 수 있어(소급 실행 시 실제 발생) 장부가가 취득가보다 과소계상된다.
@@ -327,7 +336,11 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
 
   if (stmts.length > 0) await c.env.DB.batch(stmts)
 
-  return c.json({ success: true, data: { processed: Math.floor(stmts.length / 2), period } })
+  return c.json({ success: true, data: {
+    processed: Math.floor(stmts.length / 2), period,
+    // 소급 불가로 건너뛴 자산 — 조용히 빼지 않고 센다
+    skipped_later_period: skippedLater.length, skipped_asset_ids: skippedLater.slice(0, 50),
+  } })
 })
 
 // ─── 자산 처분 ──────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import invoiceScript from '../scripts/invoice.js?raw'
+import salesQtyLabelJs from '../scripts/shared/salesQtyLabel.js?raw'   // 수량 표기 정본 — 없으면 「10조(20EA)」가 원시수량으로 떨어진다
 import displayUnitPrice from '../scripts/shared/displayUnitPrice.js?raw'   // 단가 표기 정본(장당가 파생) — MES_UP 없으면 문서 단가가 조용히 틀린다
 
 export function invoicePage(c: Context<HonoEnv>) {
@@ -181,6 +182,7 @@ export function invoicePage(c: Context<HonoEnv>) {
 
         <script>
             var ORDER_ID = ${orderId};
+            ${salesQtyLabelJs}
             ${displayUnitPrice}
             ${invoiceScript}
         </script>

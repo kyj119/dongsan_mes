@@ -61,20 +61,58 @@ function chainedAtSameDepth(expr) {
   return /\?:\?/.test(s) || /\?:[^?]*\?:/.test(s)
 }
 
+// 삼항이 여러 줄에 걸친 형태를 한 논리행으로 잇는다. 두 가지 모양을 **둘 다** 본다(2026-09-26):
+//   ① 줄 끝에 ?/: 가 있는 형태        a ? b :\n  c ? d : e
+//   ② 다음 줄이 ?/: 로 **시작**하는 형태  cond\n  ? A\n  : c2 ? B : C   ← JSX 코드베이스에 흔한데 예전엔 못 봤다
+function logicalLine(raw, i) {
+  let joined = stripNoise(raw[i])
+  let j = i
+  while (j + 1 < raw.length && j - i < 8) {
+    const cur = stripNoise(raw[j]); const next = stripNoise(raw[j + 1])
+    if (/[?:]\s*$/.test(cur) || /^\s*[?:](?![?.])/.test(next)) { joined += ' ' + next; j++ } else break
+  }
+  return joined
+}
+
+function scanLines(raw, rel) {
+  const out = []
+  for (let i = 0; i < raw.length; i++) {
+    const line = raw[i]
+    if (/^\s*(\*|\/\/)/.test(line)) continue          // 주석 줄
+    if (/^\s*[?:](?![?.])/.test(stripNoise(line))) continue   // 이어지는 줄은 시작 줄에서 이미 봤다
+    const joined = logicalLine(raw, i)
+    if ((joined.match(/\?/g) || []).length < 2) continue
+    if (!chainedAtSameDepth(joined)) continue
+    out.push({ file: rel, line: i + 1, text: line.trim().slice(0, 130) })
+  }
+  return out
+}
+
+// 자가시험 — 잡아야 할 것과 잡으면 안 되는 것을 같이 명세한다(CLAUDE.md 가 양방향이라고 적은 근거)
+if (process.argv.includes('--selftest')) {
+  const catchIt = [
+    ["var a = x ? 1 : y ? 2 : 3;"],                               // 한 줄
+    ["var a = x ? 1 :", "  y ? 2 : 3;"],                           // 줄 끝 연산자
+    ["var a = x", "  ? 1", "  : y ? 2 : 3;"],                      // 줄 앞 연산자(예전 미탐)
+  ]
+  const passIt = [
+    ["var a = x ? 1 : (y ? 2 : 3);"],                              // 괄호
+    ["var a = x", "  ? 1", "  : (y ? 2 : 3);"],                    // 줄 앞 + 괄호
+    ["var a = x ? 1 : 2;", "var b = y ? 3 : 4;"],                  // 별개 문장 둘
+    ["var a = o?.b ?? c;"],                                        // ?. · ??
+  ]
+  let bad = 0
+  catchIt.forEach((c, k) => { if (scanLines(c, 'c' + k).length !== 1) { bad++; console.error('  미탐:', c.join(' / ')) } })
+  passIt.forEach((c, k) => { if (scanLines(c, 'p' + k).length !== 0) { bad++; console.error('  오탐:', c.join(' / ')) } })
+  console.log(bad ? `[jsx-ternary] selftest FAIL ${bad}건` : `[jsx-ternary] selftest OK — 잡을 것 ${catchIt.length} · 안 잡을 것 ${passIt.length}`)
+  process.exit(bad ? 1 : 0)
+}
+
 const files = SCAN.flatMap((d) => (fs.existsSync(d) ? walk(d, []) : []))
 const hits = []
 
 for (const f of files) {
-  const raw = fs.readFileSync(f, 'utf8').split('\n')
-  for (let i = 0; i < raw.length; i++) {
-    const line = raw[i]
-    if (/^\s*(\*|\/\/)/.test(line)) continue          // 주석 줄
-    // 삼항이 다음 줄로 이어지는 형태까지 본다(호스트의 실제 모양이 그렇다)
-    const joined = stripNoise(line) + (i + 1 < raw.length && /[?:]\s*$/.test(stripNoise(line)) ? ' ' + stripNoise(raw[i + 1]) : '')
-    if ((joined.match(/\?/g) || []).length < 2) continue
-    if (!chainedAtSameDepth(joined)) continue
-    hits.push({ file: path.relative(ROOT, f), line: i + 1, text: line.trim().slice(0, 130) })
-  }
+  hits.push(...scanLines(fs.readFileSync(f, 'utf8').split('\n'), path.relative(ROOT, f)))
 }
 
 console.log('\nJSX 중첩 삼항 감사 — ExtendScript 는 왼쪽 결합으로 파싱한다\n' + '─'.repeat(58))

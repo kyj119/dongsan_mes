@@ -181,3 +181,33 @@ Workflow 15트랙(메타·게이트·도메인 코드·외부 축) → 중·고 
 - `IllustratorAutomat/designer/mes-cut-host.jsx:3329` — 굳히기 PDFSaveOptions가 viewAfterSaving과 마크·도련만 명시한다. 래스터 다운샘플·압축(colorDownsampling/colorCompression 등)은 명시하지 않아 PC의 마지막 PDF 프리셋을 그대로 물려받을 수 있다. → 반박: 코드 사실은 맞습니다. mesCut_pdfNoMarks(mes-cut-host.jsx:112-120)와 두 굳히기 경로(:3120-3126, :3329-3340)는 viewAfterSaving·마크·도련만 명시하고, 다운샘플·압축은 명시하지 않습니다. 하지만 이것이 재현 가능한 결함이라는 근거는 없습니다.  1. 실측된 상속은 두 속성뿐입니다. PC 프리셋
 - `src/routes/hrSelf.ts:17` — 직원 셀프 인증이 사원번호와 생년월일 6자리뿐입니다(생년월일은 사실상 공개 정보). 그런데 이 토큰으로 급여명세서·근로계약서(주소·연락처·서명) 열람과 근로계약 전자서명(PATCH sign)까지 할 수 있습니다. 레이트리밋도 isolate별 메모리 Map이라 우회됩니다. → 반박: 코드에 적힌 사실은 맞습니다. 셀프 인증은 사원번호와 생년월일 6자리뿐이고(hrSelf.ts:17-60), 그 토큰으로 급여명세서 열람(:217)과 근로계약서 서명(:323)이 됩니다. 다만 이것은 사용자가 이미 확정한 설계입니다. memory/design-payroll-self-service.md 설계결정 2번에 「인증 강화 안 함 — 사원번호+생년월일 
 - `src/routes/bank.ts:2081` — 통장 거래를 CREATED 모드로 적용하는 과정이 세 번의 따로 된 쓰기(①APPLIED 클레임 ②payments·purchase_payments INSERT batch ③matched_*_id UPDATE)라, ③이 실패하면 원장 행이 통장과 연결되지 않은 채 남는다. → 반박: 리뷰가 짚은 코드 구조는 맞습니다. 입금 경로는 bank.ts:2083 클레임 → :2091 batch → :2093 UPDATE, 출금 경로는 :2038 → :2045 → :2053 순서로 쓰기가 따로 나뉘어 있습니다. 하지만 리뷰가 제시한 결과인 「다시 적용하면 입금이 새로 생겨 미수금이 이중 차감된다」는 재현되지 않습니다.  - **재적용은 연결부터 
+
+## 2차 반영 (같은 날, `session/review-fixes2`)
+
+결정 없이 고칠 수 있는 확정분 22건 + 리뷰 도중 새로 나온 2건.
+
+| # | 위치 | 조치 |
+|---|---|---|
+| 3 | `scan.ts` · `cards/lifecycle.ts` | 스캔 출고가 웹 출고와 같은 본체(`shipCard`)를 탄다 — 상태·후가공 확인·주문 전이·재고 차감·출고 기록 |
+| 5·33 | `inventory.ts` | 입고 검수 목록·카운트에 법인 필터, 취소 역분개는 입고 법인·원장 창고로 |
+| 12·13 | `orders/update.ts` | 출고 잠금 가드를 원시↔원시·(품목×법인)으로 비교 |
+| 14 | `returns.ts` | 반품 재입고를 출고 차감과 같은 base 환산으로 |
+| 18 | `taxInvoices/issue.ts` | 단건·묶음 발행에 법인 필터 + 이미 발행된 주문 400 |
+| 26 | `cards/lifecycle.ts` | 출력 되돌리기 2경로에서 `shipment_ready` 짝 되돌림 |
+| 31 | `po-receive.ts` · `inventory.ts` | PO 헤더 완료 판정을 라인과 같은 축(예상수량=롤 수)으로 |
+| 34 | `purchaseOrders/core.ts` | 발주 수정 헤더·삭제·재삽입 한 batch |
+| 44 | `prices.ts` | 단가 제안 역산을 라인 스냅샷 축·최소청구 변으로 |
+| 47 | `priceList.ts` · `itemRow.js` | 기준가 base_price 통일, 늦게 온 응답이 입력을 덮지 않음 |
+| 50 | `check-fn-refs.cjs` | 독립 HTML 페이지에는 레이아웃을 붙이지 않음(자가시험 8건·양방향) |
+| 56 | `migration.ts` | 이관 대사를 AR 정본(`deriveClientBalancesBulk`)으로 |
+| 59 | `fixedAssets.ts` | 뒤 기간 기록이 있는 자산은 소급 상각 건너뜀 + 응답에 건수 |
+| 60 | `cashflowEngine.ts` | 취소·청구해제된 주문의 입금예정 행을 파생 필터로 제외 |
+| 64 | `jsx-ternary-audit.cjs` | 줄 앞 연산자 형태 탐지 + 자가시험(양방향)·`audit:jsx-ternary` 에 배선 |
+| 69 | `orders/lifecycle.ts` | 주문 취소 시 출고 차감 환원(없으면 no-op) |
+| 71 | `taxInvoices/issue.ts` | 계산서 취소·입금 링크·청구그룹 한 batch, 실패를 삼키지 않음 |
+| 73 | `cards/lifecycle.ts` | 단건 상태변경: 출고 카드 변경·완료→출력중 역행 차단 |
+| 79 | `leaves.ts` | 승인·승인취소 차감/복원에 상태 가드(동시 호출 이중 처리 방지) |
+| 신규 | `shared/salesQtyLabel.js` | #50 개선 게이트가 잡음 — 거래명세서·견적서가 shell 전용 `salesQtyLabel` 을 못 불러 **판매단위 표기가 늘 원시수량**이었다 |
+| 신규 | `scripts/end-session.ps1` | 세션 종료가 다른 세션 dev 서버까지 끄던 것 → 그 worktree 서버만 |
+
+**미반영(이유)**: #6 월차 → #35 연차 기준 결정과 묶임(잔여 조회가 연도 단위라 단독 수정 시 표시가 바뀐다) · #20·#21·#23 바로빌 → WSDL 대조 선행 · #42 LogWatcher·#43·#81 IA·#80 caps-worker → 웹과 분리된 배포 축(PC 방문·`ia:deploy`) · #75 훅 cwd → 전 세션 훅 동작이 바뀌어 별도 검토.

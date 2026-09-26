@@ -6,6 +6,7 @@ import { getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator
 import { getItemDefaultZones } from '../utils/inventoryZone'
 import { kstYmd, kstYmdCompact } from '../utils/kstDate'
 import { syncArAdjustmentStmts } from './ledger/ar-helpers'
+import { salesBaseQtySql } from '../utils/salesBaseQty'
 
 const returns = new Hono<HonoEnv>()
 returns.use('*', authMiddleware)
@@ -168,12 +169,20 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
     // 환원 법인 = 출고 차감(stockShip)과 동일 규칙: COALESCE(라인 담당법인, 주문 법인) — 세션 법인 귀속은
     //   협업주문(선명 출고분을 동산 세션이 처리)에서 나간법인≠돌아온법인 불일치 유발 (2026-07-06 감사 #4)
     const { results: returnItems } = await c.env.DB.prepare(`
-      SELECT ri.*, oi.item_id, COALESCE(oi.assigned_entity_id, o.entity_id) AS stock_entity_id
+      SELECT ri.*, oi.item_id, COALESCE(oi.assigned_entity_id, o.entity_id) AS stock_entity_id,
+        -- 반품 수량은 주문 라인의 판매단위 원시값이다. 출고 차감(stockShip.selectShippableLines)은 base 로
+        --   환산해 뺐으므로 되돌릴 때도 **같은 환산**을 한다(롤 판매 = pack_size 배). 안 하면 재고가 덜 돌아온다.
+        CASE
+          WHEN oi.sales_unit IS NOT NULL AND COALESCE(oi.unit_factor, 0) > 0 THEN 1.0
+          WHEN COALESCE(oi.quantity, 0) > 0 THEN (${salesBaseQtySql('oi', 'i')}) * 1.0 / oi.quantity
+          ELSE 1.0
+        END AS base_ratio
       FROM return_items ri
       LEFT JOIN order_items oi ON ri.order_item_id = oi.id
+      LEFT JOIN items i ON i.id = oi.item_id
       LEFT JOIN orders o ON oi.order_id = o.id
       WHERE ri.return_id = ? AND ri.disposition = 'RESTOCK' AND oi.item_id IS NOT NULL
-    `).bind(id).all<{ item_id: number; quantity: number; stock_entity_id: number | null }>()
+    `).bind(id).all<{ item_id: number; quantity: number; stock_entity_id: number | null; base_ratio: number | null }>()
 
     if (returnItems.length > 0) {
       const sessionEid = getWriteEntityId(c)
@@ -200,7 +209,7 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
         const eid = (ri.stock_entity_id ?? sessionEid) as number
         const key = `${eid}:${ri.item_id}`
         const cur = restockAgg.get(key) || { eid, item_id: ri.item_id, quantity: 0 }
-        cur.quantity += Number(ri.quantity) || 0
+        cur.quantity += (Number(ri.quantity) || 0) * (Number(ri.base_ratio) > 0 ? Number(ri.base_ratio) : 1)
         restockAgg.set(key, cur)
       }
       // #164: balance_after를 서브쿼리로 읽어 race condition 방지

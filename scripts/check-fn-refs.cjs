@@ -219,17 +219,30 @@ function analyze(srcDir) {
   for (const f of [...layoutFiles, ...layoutScripts]) for (const n of defsByFile.get(f) || []) layoutDefs.add(n);
   const pageFiles = tsFiles.filter((f) => /[\\/]src[\\/]pages[\\/]/.test(f));
   const bundles = new Map(); // page → { scripts:Set, defs:Set }
+  // ★레이아웃(shell.js 포함)은 **문서 뼈대를 스스로 만드는 페이지에는** 붙이지 않는다(2026-09-26).
+  //   예전엔 모든 페이지에 붙여서, renderPage 를 안 쓰는 독립 HTML(invoice·quotation 등)이 shell 전용 함수
+  //   (navigateTo·showConfirm)를 불러도 「정의 있음」으로 통과했다 — 실제로는 ReferenceError 로 버튼이 죽어 있었다.
+  //   판정 = 페이지나 그것이 끌어오는 모듈(레이아웃 제외)의 리터럴에 <!DOCTYPE>/<html> 이 있는가.
+  //   「레이아웃을 import 하는가」로 가르면 탭 partial(다른 페이지가 import 하는 조각)이 전부 오탐이 된다.
+  const isLayoutMod = (m) => /[\\/]src[\\/]layout(\.ts|[\\/])/.test(m);
+  const RE_DOC_SHELL = /<!DOCTYPE html|<html[\s>]/i;
   for (const p of pageFiles) {
-    const scripts = new Set(layoutScripts);
-    const defs = new Set(layoutDefs);
+    const scripts = new Set();
+    const defs = new Set();
     const seenMod = new Set();
+    let ownShell = false;
     (function pull(f) {
       if (seenMod.has(f) || !imports.has(f)) return;
       seenMod.add(f);
+      if (!isLayoutMod(f) && RE_DOC_SHELL.test(literal.get(f) || '')) ownShell = true;
       for (const n of defsByFile.get(f) || []) defs.add(n);
       for (const s of imports.get(f).raw) { scripts.add(s); for (const n of defsByFile.get(s) || []) defs.add(n); }
       for (const m of imports.get(f).mods) if (/[\\/]src[\\/](pages|layout)/.test(m)) pull(m);
     })(p);
+    if (!ownShell) {
+      for (const s of layoutScripts) scripts.add(s);
+      for (const n of layoutDefs) defs.add(n);
+    }
     bundles.set(p, { scripts, defs });
   }
   const pagesOf = new Map(); // script → [page]
@@ -317,6 +330,9 @@ function runSelftest() {
     '<button onclick="serverOnly()">b</button><button onclick="ghost(\'${"x"}\')">c</button><button onclick="toggleNav()">d</button>`',
   ]);
   w('pages/q.ts', ["import bScript from '../scripts/b.js?raw'", 'export const html = `<script>${bScript}</script><button onclick="onlyInB()">a</button><button onclick="defined1()">b</button>`']);
+  // 독립 HTML 문서(renderPage 안 씀) — 레이아웃(shell.js)이 안 실리므로 shell 전용 함수 호출은 잡아야 한다(2026-09-26)
+  w('scripts/c.js', ['function docLocal() {} function run() { docLocal(); showToast(1); }']);
+  w('pages/r.ts', ["import cScript from '../scripts/c.js?raw'", 'export const html = `<!DOCTYPE html><html><body><script>${cScript}</script></body></html>`']);
   const { missing } = analyze(src);
   fs.rmSync(dir, { recursive: true, force: true });
   const got = missing.map((m) => `${path.basename(m.file)}:${m.line} ${m.name} [${m.kind}]`).sort();
@@ -328,9 +344,10 @@ function runSelftest() {
     'p.ts:6 ghost [on* handler]',           // 페이지 템플릿의 onclick
     'p.ts:6 serverOnly [on* handler]',      // 서버 코드에만 있는 함수를 브라우저 onclick 이 부른다
     'q.ts:2 defined1 [on* handler]',        // q 페이지 번들에 없는 함수
+    'c.js:1 showToast [bare call]',         // 독립 문서가 shell 전용 함수를 부른다(레이아웃이 안 실린다)
   ].sort();
   const ok = JSON.stringify(got) === JSON.stringify(want);
-  console.log(ok ? '[check-fn-refs] selftest OK — 잡아야 할 7건만 잡고, 지역·window 노출·레이아웃 공통·페이지 리터럴 정의·typeof 가드·주석·정규식·문자열 연결·외부 라이브러리는 안 잡는다'
+  console.log(ok ? '[check-fn-refs] selftest OK — 잡아야 할 8건만 잡고, 지역·window 노출·레이아웃 공통·페이지 리터럴 정의·typeof 가드·주석·정규식·문자열 연결·외부 라이브러리는 안 잡는다'
     : `[check-fn-refs] selftest FAIL\n  기대: ${want.join(' | ')}\n  실제: ${got.join(' | ')}`);
   process.exit(ok ? 0 : 1);
 }

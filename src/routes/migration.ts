@@ -4,6 +4,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId } from '../utils/entityFilter'
 import { getNextEntitySeqNumber } from '../utils/sequenceGenerator'
 import { syncUnitsFromPair } from '../utils/itemUnits'
+import { deriveClientBalancesBulk } from './ledger/ar-helpers'
 
 const migrationRouter = new Hono<HonoEnv>()
 
@@ -724,30 +725,19 @@ migrationRouter.post('/verify/balances', async (c) => {
 
     const db = c.env.DB
 
-    // 시스템 잔액 재계산 (opening_balance 포함)
-    const { results: sysBalances } = await db.prepare(`
-      SELECT c.id, c.client_code, c.client_name, c.balance, c.opening_balance,
-        COALESCE(o.v, 0) as total_billed,
-        COALESCE(p.v, 0) as total_paid,
-        COALESCE(a.v, 0) as total_adj
-      FROM clients c
-      LEFT JOIN (
-        SELECT client_id, SUM(CASE WHEN billing_status = 'BILLED' THEN billed_amount ELSE 0 END) as v
-        FROM orders GROUP BY client_id
-      ) o ON o.client_id = c.id
-      LEFT JOIN (
-        SELECT client_id, SUM(amount) as v FROM payments GROUP BY client_id
-      ) p ON p.client_id = c.id
-      LEFT JOIN (
-        SELECT client_id, SUM(amount) as v FROM adjustments GROUP BY client_id
-      ) a ON a.client_id = c.id
-      WHERE c.is_active = 1
-    `).all() as any
+    // 시스템 잔액 = **AR 정본**(deriveClientBalancesBulk — 청구그룹 기준·세션 법인 스코프).
+    //   종전엔 폐기된 산식(orders.billed_amount + clients.opening_balance − 입금 − 조정, 법인 필터 없음)으로
+    //   go/no-go 를 판정했다 — recalculate-all-balances 를 폐기한 바로 그 산식이라 「대사 통과」가 화면과 달랐다.
+    const { results: sysClients } = await db.prepare(`
+      SELECT c.id, c.client_code, c.client_name FROM clients c WHERE c.is_active = 1
+    `).all<{ id: number; client_code: string; client_name: string }>()
+    const wanted = new Set(balances.map((b) => b.client_code))
+    const targets = (sysClients || []).filter((s) => wanted.has(s.client_code))
+    const derived = await deriveClientBalancesBulk(c, targets.map((s) => s.id))
 
     const sysMap = new Map<string, any>()
-    for (const s of sysBalances) {
-      const calculated = (s.opening_balance || 0) + s.total_billed - s.total_paid - s.total_adj
-      sysMap.set(s.client_code, { ...s, calculated_balance: calculated })
+    for (const s of targets) {
+      sysMap.set(s.client_code, { ...s, calculated_balance: Number(derived[s.id] || 0) })
     }
 
     const results: any[] = []

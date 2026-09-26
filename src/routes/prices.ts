@@ -99,15 +99,20 @@ pricesRouter.get('/', async (c) => {
         //   ⇒ 금액에서 되나눈다: amount ÷ (청구면적 × 수량).
         //      이관분은 올바른 ㎡ 단가로 환산되고, 신규분은 amount 자체가 단가×면적×수량이라 원값이 복원된다.
         //      청구면적 = 10cm 올림 + 최소 1m — utils/orderLineAmount.ts billingSide() 와 같은 규칙.
+        //      ★과금 규칙은 **라인 스냅샷 우선**(0600 · orders/helpers.resolveLineAxis) — 품목 현재값으로 과거를 읽지 않는다.
+        //        최소청구 변도 고정 100 이 아니다: UV 판재는 0(실면적). 100 으로 되나누면 ㎡단가가 작게 나온다.
+        const AXIS_PM = `COALESCE(oi.pricing_method, i.pricing_method)`
+        const AXIS_MS = `(CASE WHEN COALESCE(oi.min_billing_side_cm, i.min_billing_side_cm) >= 0
+                              THEN COALESCE(oi.min_billing_side_cm, i.min_billing_side_cm) ELSE 100 END)`
         const AREA_UNIT_PRICE_SQL = `
-          CASE WHEN i.pricing_method = 'AREA'
+          CASE WHEN ${AXIS_PM} = 'AREA'
                     AND COALESCE(oi.width, 0)  > 0
                     AND COALESCE(oi.height, 0) > 0
                     AND COALESCE(oi.quantity, 0) > 0
                     AND oi.amount <> 0
                THEN oi.amount / (
-                      (MAX(CAST((oi.width  + 9) / 10 AS INT) * 10, 100) / 100.0)
-                    * (MAX(CAST((oi.height + 9) / 10 AS INT) * 10, 100) / 100.0)
+                      (MAX(CAST((oi.width  + 9) / 10 AS INT) * 10, ${AXIS_MS}) / 100.0)
+                    * (MAX(CAST((oi.height + 9) / 10 AS INT) * 10, ${AXIS_MS}) / 100.0)
                     * oi.quantity )
                ELSE oi.unit_price END`
         // ★AREA 품목인데 **규격이 없는 라인은 아예 빼야 한다**(2026-09-04 실측).
@@ -123,7 +128,7 @@ pricesRouter.get('/', async (c) => {
         // ⚠️ 20m 초과 대형은 **정상이다**(42m×24m 건물 랩핑·113m 매쉬). 이상치로 걸러내지 말 것 —
         //    ㎡단가가 3,040~3,563원으로 오히려 일관된다.
         const AREA_USABLE_SQL = `(
-             i.pricing_method <> 'AREA'
+             ${AXIS_PM} <> 'AREA'
           OR (COALESCE(oi.width, 0) > 0 AND COALESCE(oi.height, 0) > 0
               AND NOT (oi.width <= 10 AND oi.height <= 10))
         )`

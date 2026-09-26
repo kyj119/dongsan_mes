@@ -24,6 +24,18 @@ import {
   median, spreadOverdue, daysBetween, type RunRate,
 } from './overdueSpread'
 
+/**
+ * 물질화된 입금예정(ORDER) 행이 **아직 살아 있는 청구**인가 — 파생 필터.
+ * auto-generate(cashSchedule.ts)는 BILLED 청구그룹에서만 행을 만드는데, 주문 취소·회계반영 취소 경로
+ * 어디에도 그 행을 지우는 코드가 없다(발주 쪽은 core.ts 가 정리한다). 정리 코드를 경로마다 심는 대신
+ * 읽는 쪽에서 거른다 — 되돌리면 다음 조회에서 저절로 맞는다(§누적 캐시 「파생으로 뺀다」).
+ */
+const LIVE_ORDER_SCHEDULE_SQL = (cs: string) => ` AND (${cs}.flow_type != 'IN' OR ${cs}.source_type != 'ORDER' OR ${cs}.source_id IS NULL OR EXISTS (
+  SELECT 1 FROM order_billing_groups lg JOIN orders lo ON lo.id = lg.order_id
+  WHERE lg.order_id = ${cs}.source_id AND lg.entity_id = ${cs}.entity_id
+    AND lg.billing_status IN ('BILLED', 'PAID') AND lo.status != 'CANCELLED'))`
+
+
 export interface CashflowItem {
   flow: 'IN' | 'OUT'
   type: string                    // ORDER | PURCHASE | FIXED | LOAN | ORDER_EXPECTED | TAX | ...
@@ -214,7 +226,7 @@ export async function buildCashflowDays(
     SELECT cs.id, cs.client_id, cs.entity_id, cs.schedule_date, cs.amount, cs.status, cs.actual_amount
     FROM cash_schedule cs
     WHERE cs.flow_type = 'IN' AND cs.source_type = 'ORDER'
-      AND cs.status != 'CANCELLED' AND cs.client_id IS NOT NULL${efArCs.clause}${arExcl('cs.client_id')}
+      AND cs.status != 'CANCELLED' AND cs.client_id IS NOT NULL${efArCs.clause}${arExcl('cs.client_id')}${LIVE_ORDER_SCHEDULE_SQL('cs')}
     ORDER BY cs.client_id, cs.entity_id, cs.schedule_date, cs.id
   `).bind(...efArCs.params).all<{
     id: number; client_id: number; entity_id: number; schedule_date: string
@@ -472,7 +484,7 @@ export async function buildCashflowDays(
       AND cs.status != 'CANCELLED'
       AND cs.source_type != 'FIXED'${efCs.clause}
       AND (cs.flow_type != 'IN'  OR cs.source_type != 'ORDER'    OR (1=1${arExcl('cs.client_id')}))
-      AND (cs.flow_type != 'OUT' OR cs.source_type != 'PURCHASE' OR (1=1${apExcl('cs.client_id')}))
+      AND (cs.flow_type != 'OUT' OR cs.source_type != 'PURCHASE' OR (1=1${apExcl('cs.client_id')}))${LIVE_ORDER_SCHEDULE_SQL('cs')}
   `).bind(from, to, ...efCs.params).all<{
     id: number; schedule_date: string; flow_type: string; source_type: string
     amount: number; description: string | null; status: string
@@ -518,7 +530,7 @@ export async function buildCashflowDays(
         AND cs.status IN ('PENDING', 'OVERDUE')
         AND cs.source_type != 'FIXED'${efOv.clause}
         AND (cs.flow_type != 'IN'  OR cs.source_type != 'ORDER'    OR (1=1${arExcl('cs.client_id')}))
-        AND (cs.flow_type != 'OUT' OR cs.source_type != 'PURCHASE' OR (1=1${apExcl('cs.client_id')}))
+        AND (cs.flow_type != 'OUT' OR cs.source_type != 'PURCHASE' OR (1=1${apExcl('cs.client_id')}))${LIVE_ORDER_SCHEDULE_SQL('cs')}
     `).bind(from, ...efOv.params).all<{
       id: number; schedule_date: string; flow_type: string; source_type: string; amount: number
       description: string | null; status: string; source_id: number | null

@@ -158,13 +158,23 @@ async function annualRemaining(db: D1Database, employeeId: number, year: number)
   return Number(r?.rem ?? 0)
 }
 
+
+/**
+ * 동시 호출 가드 — 차감·복원 문장은 「그 신청이 아직 기대 상태일 때만」 반영된다.
+ * batch 는 트랜잭션이라 같은 신청을 두 번 승인(더블클릭·두 탭)하면 두 번째 batch 는 상태가 이미 바뀐 걸 보고
+ * 전부 no-op 이 된다. 예전엔 상태 확인이 batch **밖**이라 used 가 두 번 차감·복원됐다.
+ */
+type ReqGuard = { requestId: number; status: 'PENDING' | 'APPROVED' }
+const GUARD_SQL = ` AND EXISTS (SELECT 1 FROM leave_requests WHERE id = ? AND status = ?)`
+
 /** 차감 stmts: 연차=FIFO(MONTHLY 만료임박 먼저→ANNUAL), 병가=SICK 단일행. */
-async function buildDeductStmts(db: D1Database, employeeId: number, year: number, deductType: 'ANNUAL' | 'SICK', days: number, entityId: number): Promise<D1PreparedStatement[]> {
+async function buildDeductStmts(db: D1Database, employeeId: number, year: number, deductType: 'ANNUAL' | 'SICK', days: number, entityId: number, guard: ReqGuard): Promise<D1PreparedStatement[]> {
   if (deductType === 'SICK') {
     return [db.prepare(`
-      INSERT INTO leave_balances (employee_id, year, leave_type, used, entity_id) VALUES (?, ?, 'SICK', ?, ?)
+      INSERT INTO leave_balances (employee_id, year, leave_type, used, entity_id)
+      SELECT ?, ?, 'SICK', ?, ? WHERE 1=1${GUARD_SQL}
       ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET used = leave_balances.used + excluded.used, updated_at = CURRENT_TIMESTAMP
-    `).bind(employeeId, year, days, entityId)]
+    `).bind(employeeId, year, days, entityId, guard.requestId, guard.status)]
   }
   const { results } = await db.prepare(
     `SELECT leave_type, (accrued+granted_extra+carried_over-used-expired) AS avail
@@ -178,22 +188,23 @@ async function buildDeductStmts(db: D1Database, employeeId: number, year: number
     const avail = availMap.get(lt) ?? 0
     if (avail <= 0) continue
     const take = Math.min(avail, need)
-    stmts.push(db.prepare(`UPDATE leave_balances SET used=used+?, updated_at=CURRENT_TIMESTAMP WHERE employee_id=? AND year=? AND leave_type=?`).bind(take, employeeId, year, lt))
+    stmts.push(db.prepare(`UPDATE leave_balances SET used=used+?, updated_at=CURRENT_TIMESTAMP WHERE employee_id=? AND year=? AND leave_type=?${GUARD_SQL}`).bind(take, employeeId, year, lt, guard.requestId, guard.status))
     need -= take
   }
   if (need > 0) { // 가용 부족분(잔여검증 통과면 0) — ANNUAL 행에 UPSERT
     stmts.push(db.prepare(`
-      INSERT INTO leave_balances (employee_id, year, leave_type, used, entity_id) VALUES (?, ?, 'ANNUAL', ?, ?)
+      INSERT INTO leave_balances (employee_id, year, leave_type, used, entity_id)
+      SELECT ?, ?, 'ANNUAL', ?, ? WHERE 1=1${GUARD_SQL}
       ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET used = leave_balances.used + excluded.used, updated_at = CURRENT_TIMESTAMP
-    `).bind(employeeId, year, need, entityId))
+    `).bind(employeeId, year, need, entityId, guard.requestId, guard.status))
   }
   return stmts
 }
 
 /** 복원 stmts(역FIFO): 연차=ANNUAL 먼저→MONTHLY, 병가=SICK. used -= days(0 미만 방지). */
-async function buildRestoreStmts(db: D1Database, employeeId: number, year: number, deductType: 'ANNUAL' | 'SICK', days: number): Promise<D1PreparedStatement[]> {
+async function buildRestoreStmts(db: D1Database, employeeId: number, year: number, deductType: 'ANNUAL' | 'SICK', days: number, guard: ReqGuard): Promise<D1PreparedStatement[]> {
   if (deductType === 'SICK') {
-    return [db.prepare(`UPDATE leave_balances SET used=MAX(0,used-?), updated_at=CURRENT_TIMESTAMP WHERE employee_id=? AND year=? AND leave_type='SICK'`).bind(days, employeeId, year)]
+    return [db.prepare(`UPDATE leave_balances SET used=MAX(0,used-?), updated_at=CURRENT_TIMESTAMP WHERE employee_id=? AND year=? AND leave_type='SICK'${GUARD_SQL}`).bind(days, employeeId, year, guard.requestId, guard.status)]
   }
   const { results } = await db.prepare(
     `SELECT leave_type, used FROM leave_balances WHERE employee_id=? AND year=? AND leave_type IN ('ANNUAL','MONTHLY')`
@@ -206,7 +217,7 @@ async function buildRestoreStmts(db: D1Database, employeeId: number, year: numbe
     const u = usedMap.get(lt) ?? 0
     if (u <= 0) continue
     const back = Math.min(u, give)
-    stmts.push(db.prepare(`UPDATE leave_balances SET used=used-?, updated_at=CURRENT_TIMESTAMP WHERE employee_id=? AND year=? AND leave_type=?`).bind(back, employeeId, year, lt))
+    stmts.push(db.prepare(`UPDATE leave_balances SET used=used-?, updated_at=CURRENT_TIMESTAMP WHERE employee_id=? AND year=? AND leave_type=?${GUARD_SQL}`).bind(back, employeeId, year, lt, guard.requestId, guard.status))
     give -= back
   }
   return stmts
@@ -607,13 +618,17 @@ leavesRouter.patch('/requests/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
     // B7+병존: 잔여 차감(연차 FIFO MONTHLY→ANNUAL) + 상태 변경 원자적 batch.
     const stmts: D1PreparedStatement[] = []
     if (deductType) {
-      const deductStmts = await buildDeductStmts(c.env.DB, req.employee_id, year, deductType, req.days, reqEntityId)
+      const deductStmts = await buildDeductStmts(c.env.DB, req.employee_id, year, deductType, req.days, reqEntityId, { requestId: id, status: 'PENDING' })
       stmts.push(...deductStmts)
     }
+    // 상태 변경은 **마지막** — 앞 문장들의 가드가 PENDING 을 봐야 한다
     stmts.push(c.env.DB.prepare(`
-      UPDATE leave_requests SET status = 'APPROVED', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}
+      UPDATE leave_requests SET status = 'APPROVED', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'PENDING'${ef.clause}
     `).bind(user?.id || null, id, ...ef.params))
-    await c.env.DB.batch(stmts)
+    const apRes = await c.env.DB.batch(stmts)
+    if (!(apRes[apRes.length - 1]?.meta?.changes > 0)) {
+      return c.json({ success: false, error: '이미 처리된 신청입니다.' }, 409)   // 동시 승인 — 차감은 가드로 no-op
+    }
 
     // 큐06: 승인된 휴가를 근태에 마킹(날짜별) — 반차 지각 오판정 방지. 베스트에포트(실패해도 승인은 유지).
     try {
@@ -711,13 +726,16 @@ leavesRouter.patch('/requests/:id/cancel-approved', requireRole('ADMIN', 'MANAGE
     // 잔여 복원(병존 역FIFO: ANNUAL→MONTHLY, 병가=SICK) + 상태 변경을 원자적으로.
     const stmts: D1PreparedStatement[] = []
     if (deductType) {
-      const restoreStmts = await buildRestoreStmts(c.env.DB, req.employee_id, year, deductType, req.days)
+      const restoreStmts = await buildRestoreStmts(c.env.DB, req.employee_id, year, deductType, req.days, { requestId: id, status: 'APPROVED' })
       stmts.push(...restoreStmts)
     }
     stmts.push(c.env.DB.prepare(`
-      UPDATE leave_requests SET status = 'CANCELLED', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}
+      UPDATE leave_requests SET status = 'CANCELLED', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'APPROVED'${ef.clause}
     `).bind(user?.id || null, id, ...ef.params))
-    await c.env.DB.batch(stmts)
+    const caRes = await c.env.DB.batch(stmts)
+    if (!(caRes[caRes.length - 1]?.meta?.changes > 0)) {
+      return c.json({ success: false, error: '이미 처리된 신청입니다.' }, 409)   // 동시 취소 — 복원은 가드로 no-op
+    }
 
     // 근태 마킹 해제(실출근 기록 있던 날은 NORMAL 복원). 베스트에포트.
     try {

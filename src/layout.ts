@@ -12,7 +12,8 @@ import { SHARED_CSS } from './layout/shared-styles'
 // shell.js는 워커 인라인(?raw). 정적 /static 서빙은 CF Pages 자동빌드에서 _routes.json 제외가
 // 불안정해 prod 2회 장애(2026-06-11) → 인라인 복귀. 재시도 시 [[feedback-static-asset-mime]] 참조.
 import SHARED_AUTH_JS from './scripts/layout/shell.js?raw'
-import FEEDBACK_JS from './scripts/layout/feedback.js?raw'   // 전역 문제 신고 모달(0626)
+import FEEDBACK_JS from './scripts/layout/feedback.js?raw'
+import SALES_QTY_LABEL_JS from './scripts/shared/salesQtyLabel.js?raw'   // 판매단위 표기 정본 — 독립 문서와 공유   // 전역 문제 신고 모달(0626)
 
 interface AppLayoutOptions {
   title: string
@@ -270,6 +271,7 @@ ${CSV_UTIL_JS}
 ${HR_ENUMS_JS}
 ${PROCESS_ENUMS_JS}
 ${MMS_IMAGE_JS}
+${SALES_QTY_LABEL_JS}
 ${SHARED_AUTH_JS}
 ${FEEDBACK_JS}
     </script>

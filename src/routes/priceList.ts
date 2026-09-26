@@ -248,7 +248,9 @@ priceListRouter.get('/calculate', async (c) => {
       'SELECT price_policy_id FROM clients WHERE id = ?'
     ).bind(clientId).first<{ price_policy_id: number | null }>()
 
-    const basePrice = item.sales_price || item.base_price || 0
+    // 고객 노출 단가 = base_price (2026-09-03 결정, priceSheets.computeAppliedPrice 와 같은 기준).
+    //   sales_price 는 prod 전량 0 이라 지금은 결과가 같지만, 값이 생기는 순간 두 경로가 다른 가격을 낸다.
+    const basePrice = item.base_price || 0
     if (!client?.price_policy_id) {
       return c.json({ success: true, data: { price: basePrice, source: 'base' } })
     }

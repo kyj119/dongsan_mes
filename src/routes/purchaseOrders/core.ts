@@ -498,8 +498,9 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     //   갱신만 하고 있었고, 수정·삭제 경로가 하나만 어긋나도 조용히 틀린 값이 남는 축이었다.
     //   (AR 의 `clients.balance` 폐기와 같은 처리 — 컬럼은 D1 제약상 남겨둔다)
 
-    // 발주 헤더 업데이트
-    await c.env.DB.prepare(`
+    // 발주 헤더 업데이트 — 실행은 아래에서 라인 삭제·재삽입과 **한 batch** 로(원자성).
+    //   예전엔 헤더·DELETE·INSERT 가 각각 커밋돼, INSERT 가 실패하면 합계만 바뀐 **라인 없는 발주**가 남았다.
+    const headerStmt = c.env.DB.prepare(`
       UPDATE purchase_orders SET
         supplier_id = ?,
         order_date = ?,
@@ -529,12 +530,12 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       data.delivery_date !== undefined ? data.delivery_date : po.delivery_date,
       data.delivery_location !== undefined ? data.delivery_location : po.delivery_location,
       id
-    ).run()
+    )
 
-    // 기존 품목 삭제 → 새로 INSERT
-    await c.env.DB.prepare(`
+    // 기존 품목 삭제 → 새로 INSERT (같은 batch)
+    const deleteStmt = c.env.DB.prepare(`
       DELETE FROM purchase_order_items WHERE po_id = ?
-    `).bind(id).run()
+    `).bind(id)
 
     // #350 item_id→item_name N+1 SELECT를 IN절 prefetch로 제거 + batch
     const poiLookupIds = data.items
@@ -605,9 +606,8 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         unitFactor
       ))
     }
-    for (let i = 0; i < poiStmts.length; i += 80) {
-      await c.env.DB.batch(poiStmts.slice(i, i + 80))
-    }
+    // 바인드 한도(~100)는 **문장당**이라 문장 수가 늘어도 괜찮다 — batch 는 하나로 둔다(청크마다 커밋하면 절반만 바뀐 발주가 생긴다)
+    await c.env.DB.batch([headerStmt, deleteStmt, ...poiStmts])
 
     return c.json({
       success: true,

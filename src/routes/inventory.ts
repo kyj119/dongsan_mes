@@ -629,15 +629,16 @@ inventoryRouter.post('/receipts', requireEditOrRole('/receiving', 'ADMIN', 'MANA
 // GET /receipts/inspection-counts
 inventoryRouter.get('/receipts/inspection-counts', async (c) => {
   try {
+    const efc = entityFilter(c, '')   // 법인 격리 — 목록·결정과 같은 범위를 센다
     const [pr, overdue] = await Promise.all([
       c.env.DB.prepare(
-        `SELECT COUNT(*) AS n FROM inventory_receipts WHERE inspection_status = 'PENDING_REVIEW'`
-      ).first<{ n: number }>(),
+        `SELECT COUNT(*) AS n FROM inventory_receipts WHERE inspection_status = 'PENDING_REVIEW'${efc.clause}`
+      ).bind(...efc.params).first<{ n: number }>(),
       c.env.DB.prepare(
         `SELECT COUNT(*) AS n FROM inventory_receipts
          WHERE inspection_status IS NULL AND status != 'CANCELLED'
-           AND created_at <= datetime('now', '-24 hours')`
-      ).first<{ n: number }>(),
+           AND created_at <= datetime('now', '-24 hours')${efc.clause}`
+      ).bind(...efc.params).first<{ n: number }>(),
     ])
     const prCount = Number(pr?.n || 0)
     const overdueCount = Number(overdue?.n || 0)
@@ -654,6 +655,7 @@ inventoryRouter.get('/receipts/inspection-counts', async (c) => {
 // GET /receipts/pending-review
 inventoryRouter.get('/receipts/pending-review', async (c) => {
   try {
+    const efr = entityFilter(c, 'r')   // 타 법인 입고가 검수 대기에 섞이지 않게
     const { results } = await c.env.DB.prepare(
       `SELECT r.id, r.receipt_number, r.receipt_date, r.supplier, r.total_amount, r.notes,
               r.inspection_status, r.status,
@@ -661,9 +663,9 @@ inventoryRouter.get('/receipts/pending-review', async (c) => {
               (SELECT COALESCE(SUM(rejected_quantity), 0) FROM inventory_receipt_items WHERE receipt_id = r.id) AS total_rejected,
               (SELECT u.name FROM users u WHERE u.id = r.received_by) AS receiver_name
        FROM inventory_receipts r
-       WHERE r.inspection_status = 'PENDING_REVIEW'
+       WHERE r.inspection_status = 'PENDING_REVIEW'${efr.clause}
        ORDER BY r.created_at DESC, r.id DESC LIMIT 100`
-    ).all()
+    ).bind(...efr.params).all()
     return c.json({ success: true, data: results })
   } catch (err: any) {
     console.error('pending-review error:', err)
@@ -704,10 +706,13 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
 
     if (receiptStatus === 'CANCELLED') {
       // #369 멱등 가드: 이미 취소된 receipt면 재차감 없이 멱등 반환 (재시도/중복제출 이중차감 방지)
+      const efd = entityFilter(c, '')   // 타 법인 입고 취소 차단(IDOR)
       const curReceipt = await c.env.DB.prepare(
-        `SELECT inspection_status, status, po_id FROM inventory_receipts WHERE id = ?`
-      ).bind(id).first<{ inspection_status: string | null; status: string | null; po_id: number | null }>()
+        `SELECT inspection_status, status, po_id, entity_id FROM inventory_receipts WHERE id = ?${efd.clause}`
+      ).bind(id, ...efd.params).first<{ inspection_status: string | null; status: string | null; po_id: number | null; entity_id: number | null }>()
       if (!curReceipt) return c.json({ success: false, error: '입고 정보를 찾을 수 없습니다.' }, 404)
+      // 역분개는 **입고가 쌓인 법인**에서 뺀다 — 세션 법인으로 빼면 다른 법인 재고가 줄고 원 법인은 그대로다
+      const recEntityId = Number(curReceipt.entity_id) || cancelEntityId
       if (curReceipt.status === 'CANCELLED') {
         return c.json({ success: true, data: { id: Number(id), inspection_status: 'CANCELLED', receipt_status: 'CANCELLED', idempotent: true } })
       }
@@ -726,7 +731,17 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
       const invItems = (receiptItems || []).filter((ri) => ri.item_id && accOf(ri) > 0)
 
       // 역분개 대상 창고 = 품목 기본창고(정방향 입고가 거기 누적했으므로). NULL=미배정.
-      const cancelZoneMap = await getItemDefaultZones(c.env.DB, invItems.map((ri) => ri.item_id as number), cancelEntityId)
+      //   ★정본은 원장 — 입고 때 실제로 쌓인 창고(PURCHASE IN 행의 storage_zone_id)로 되짚는다
+      //   (autoDeductRestore.zoneOfDeduction 과 같은 규칙). 기본창고가 그 뒤 바뀌었으면 엉뚱한 창고에서 빠졌다.
+      //   원장 행이 없는 옛 입고만 기본창고로 폴백.
+      const cancelZoneMap = await getItemDefaultZones(c.env.DB, invItems.map((ri) => ri.item_id as number), recEntityId)
+      {
+        const { results: inRows } = await c.env.DB.prepare(
+          `SELECT item_id, storage_zone_id FROM inventory_transactions
+           WHERE reference_type = 'PURCHASE' AND reference_id = ? AND transaction_type = 'IN' AND entity_id = ?`
+        ).bind(Number(id), recEntityId).all<{ item_id: number; storage_zone_id: number | null }>()
+        for (const r of inRows || []) cancelZoneMap.set(Number(r.item_id), r.storage_zone_id ?? null)
+      }
       // 차감 전 현재 잔량 1회 조회 → balance_after를 메모리에서 산출(= max(0, 현재−합격분)) → 차감 후 read 제거
       const cancelBalMap: Record<string, number> = {}
       if (invItems.length > 0) {
@@ -734,7 +749,7 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
         const cancelPh = cancelItemIds.map(() => '?').join(',')
         const { results: cancelBalances } = await c.env.DB.prepare(
           `SELECT item_id, storage_zone_id, quantity FROM inventory WHERE item_id IN (${cancelPh}) AND entity_id = ?`
-        ).bind(...cancelItemIds, cancelEntityId).all()
+        ).bind(...cancelItemIds, recEntityId).all()
         for (const b of cancelBalances) cancelBalMap[`${b.item_id}:${(b.storage_zone_id as number | null) ?? 0}`] = b.quantity as number
       }
 
@@ -763,11 +778,12 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
           const po = await c.env.DB.prepare(`SELECT status FROM purchase_orders WHERE id = ?`)
             .bind(poId).first<{ status: string }>()
           const { results: allPoItems } = await c.env.DB.prepare(
-            `SELECT id, quantity, received_quantity FROM purchase_order_items WHERE po_id = ?`
+            `SELECT id, quantity, received_quantity, qty_is_estimate, order_packs, received_packs FROM purchase_order_items WHERE po_id = ?`
           ).bind(poId).all()
 
           const rbMap: Record<number, number> = {}
-          for (const r of rollbackItems) rbMap[r.poItemId] = r.recv
+          const rbPacks: Record<number, number> = {}
+          for (const r of rollbackItems) { rbMap[r.poItemId] = r.recv; rbPacks[r.poItemId] = r.packs }
 
           // 롤백 후 received_quantity 기준 PO status 재산정 (정방향 willAllReceived 대칭)
           let allReceived = (allPoItems || []).length > 0
@@ -775,7 +791,11 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
           for (const pi of (allPoItems || [])) {
             const qty = Number(pi.quantity || 0)
             const newRecv = Math.max(0, Number(pi.received_quantity || 0) - (rbMap[pi.id as number] || 0))
-            if (!(qty > 0 && newRecv >= qty)) allReceived = false
+            // 라인 line_status 롤백(아래 UPDATE)과 같은 축 — 예상수량 라인은 롤 수로 닫혔는지 본다
+            if (Number(pi.qty_is_estimate || 0) === 1 && Number(pi.order_packs || 0) > 0) {
+              const newPacks = Math.max(0, Number(pi.received_packs || 0) - (rbPacks[pi.id as number] || 0))
+              if (newPacks < Number(pi.order_packs)) allReceived = false
+            } else if (!(qty > 0 && newRecv >= qty)) allReceived = false
             if (newRecv > 0) anyReceived = true
           }
           const newPoStatus = allReceived ? 'RECEIVED' : anyReceived ? 'PARTIAL_RECEIVED' : 'CONFIRMED'
@@ -817,7 +837,7 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
         const after = Math.max(0, before - accBase)
         ops.push(
           c.env.DB.prepare(`UPDATE inventory SET quantity = MAX(0, quantity - ?), last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`)
-            .bind(accBase, itemId, cancelEntityId, zoneId)
+            .bind(accBase, itemId, recEntityId, zoneId)
         )
         ops.push(
           c.env.DB.prepare(
@@ -825,7 +845,7 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
              VALUES (?, 'OUT', ?, ?, 'RECEIPT_CANCEL', ?, ?, ?, datetime('now'), ?, ?)`
           ).bind(
             itemId, accBase, after,
-            Number(id), '입고 취소 역분개(합격분)', c.get('user')?.id || null, cancelEntityId, zoneId
+            Number(id), '입고 취소 역분개(합격분)', c.get('user')?.id || null, recEntityId, zoneId
           )
         )
       }

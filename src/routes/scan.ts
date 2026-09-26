@@ -9,6 +9,7 @@ import { authMiddleware } from '../middleware/auth'
 import { entityFilter, cardEntityFilter, getEntityId, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
 import { getItemDefaultZone } from '../utils/inventoryZone'
 import { packFactor } from '../utils/unitConvert'
+import { shipCard, type CardShipRow } from './cards/lifecycle'
 
 const scanRouter = new Hono<HonoEnv>()
 scanRouter.use('/*', authMiddleware)
@@ -226,12 +227,12 @@ scanRouter.post('/action', async (c) => {
 
     switch (`${body.type}:${body.action}`) {
       case 'CARD:ship': {
-        // 카드 출고 처리
-        await c.env.DB.prepare(`
-          UPDATE cards SET shipped_at = CURRENT_TIMESTAMP
-          WHERE id = ? AND shipped_at IS NULL
-        `).bind(body.id).run()
-        return c.json({ success: true, message: '출고 처리되었습니다.' })
+        // 카드 출고 — 웹 출고(POST /cards/:id/ship)와 **같은 본체**를 탄다(상태·후가공 확인, 주문 전이, 재고 차감, 출고 기록).
+        const card = await c.env.DB.prepare(
+          `SELECT id, status, order_id, card_number, shipped_at FROM cards WHERE id = ?`
+        ).bind(body.id).first<CardShipRow>()
+        if (!card) return c.json({ success: false, error: '카드를 찾을 수 없습니다.' }, 404)
+        return await shipCard(c, card, !!(body as any).force)
       }
 
       case 'CARD:start-print': {

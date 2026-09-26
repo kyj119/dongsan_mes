@@ -448,8 +448,8 @@ ordersLifecycleRouter.patch('/:id/cancel', requireEditOrRole('/orders', 'MANAGER
     // #381: 소유 법인만 취소 (재무 역분개 IDOR 차단)
     const efCx = entityFilter(c, 'orders')
     const order = await c.env.DB.prepare(
-      `SELECT id, status, order_number, client_id, billing_status, billed_amount, final_amount FROM orders WHERE id = ?${efCx.clause}`
-    ).bind(id, ...efCx.params).first<{ id: number; status: string; order_number: string; client_id: number; billing_status: string | null; billed_amount: number | null; final_amount: number }>()
+      `SELECT id, status, order_number, client_id, billing_status, billed_amount, final_amount, entity_id FROM orders WHERE id = ?${efCx.clause}`
+    ).bind(id, ...efCx.params).first<{ id: number; status: string; order_number: string; client_id: number; billing_status: string | null; billed_amount: number | null; final_amount: number; entity_id: number | null }>()
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
 
     if (order.status === 'CANCELLED') {
@@ -471,6 +471,11 @@ ordersLifecycleRouter.patch('/:id/cancel', requireEditOrRole('/orders', 'MANAGER
     }
 
     const cancelText = reason_detail ? `${reason}: ${reason_detail}` : reason
+
+    // 출고 차감(OUT) 행이 남아 있으면 되돌린다 — SHIPPED 가 아니어도 기성 라인 차감이 먼저 나간 경우가 있다.
+    //   OUT 이 없으면 no-op(멱등). 취소 뒤에는 차감 함수가 CANCELLED 를 건너뛰므로 여기서 안 풀면 영구히 남는다.
+    await restoreStockLinesOnUnship(c.env.DB, Number(id), order.entity_id || getEntityId(c) || 1,
+      { userId: user?.id ?? null, userName: user?.username ?? null, entityId: getEntityId(c) })
 
     // #55: 미출고 카드만 HOLD 처리 대상 조회
     const { results: cardsToHold } = await c.env.DB.prepare(`

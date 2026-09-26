@@ -89,10 +89,21 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
     `).bind(id).all<{ item_id: number; qty: number }>()
 
     if ((shippedOutRows.results || []).length > 0) {
-      // 차감된 구성 (품목 → 수량). 같은 품목이 여러 법인으로 분할 차감돼도 합쳐서 본다.
-      const deducted = new Map<number, number>()
-      for (const r of shippedOutRows.results) {
-        deducted.set(Number(r.item_id), (deducted.get(Number(r.item_id)) || 0) + Number(r.qty))
+      // 비교 기준 = **지금 저장된 라인**(원시 수량 × 담당법인). 원장 OUT 과 비교하면 안 된다:
+      //   OUT 은 base 로 환산된 값(롤 판매 = m)이고 payload 는 판매단위 원시값이라, 롤 품목이 든 주문은
+      //   배송지·비고만 고쳐도 「구성 변경」으로 막혔다. 또 법인을 안 봐서, 담당법인이 바뀌면 환원이
+      //   차감 행(item×entity)을 못 찾아 no-op 이 됐다. 원시↔원시·(품목×법인) 로 맞춘다.
+      const { results: curLines } = await c.env.DB.prepare(`
+        SELECT oi.item_id, COALESCE(oi.assigned_entity_id, o.entity_id) AS ent, SUM(oi.quantity) AS qty
+        FROM order_items oi JOIN items i ON i.id = oi.item_id JOIN orders o ON o.id = oi.order_id
+        WHERE oi.order_id = ? AND oi.parent_item_id IS NULL AND oi.item_id IS NOT NULL AND i.production_required = 0
+        GROUP BY oi.item_id, COALESCE(oi.assigned_entity_id, o.entity_id)
+      `).bind(id).all<{ item_id: number; ent: number | null; qty: number }>()
+      const keyOf = (iid: number, ent: number | null | undefined) => `${iid}:${Number(ent) || orderEntityId}`
+      const deducted = new Map<string, number>()
+      for (const r of curLines || []) {
+        const k = keyOf(Number(r.item_id), r.ent)
+        deducted.set(k, (deducted.get(k) || 0) + Number(r.qty))
       }
 
       // 새 payload 의 기성/유통 라인 구성. production_required 는 items 에서 확인한다
@@ -111,22 +122,24 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
           for (const r of prRows) stockable.add(Number(r.id))
         }
       }
-      const incoming = new Map<number, number>()
+      const incoming = new Map<string, number>()
       for (const it of putItems) {
         const iid = Number(it.item_id)
         if (!iid || !stockable.has(iid)) continue
         if (it.parent_client_id) continue   // 하위(부속) 라인은 차감 대상이 아니다
-        incoming.set(iid, (incoming.get(iid) || 0) + Number(it.quantity || 0))
+        const k = keyOf(iid, it.assigned_entity_id)
+        incoming.set(k, (incoming.get(k) || 0) + Number(it.quantity || 0))
       }
 
+      const label = (k: string) => { const [iid, ent] = k.split(':'); return `품목#${iid}(법인${ent})` }
       const changed: string[] = []
-      for (const [iid, qty] of deducted) {
-        const now = incoming.get(iid)
-        if (now == null) changed.push(`품목#${iid} 삭제됨`)
-        else if (Math.abs(now - qty) > 1e-9) changed.push(`품목#${iid} ${qty}→${now}`)
+      for (const [k, qty] of deducted) {
+        const now = incoming.get(k)
+        if (now == null) changed.push(`${label(k)} 삭제·법인변경`)
+        else if (Math.abs(now - qty) > 1e-9) changed.push(`${label(k)} ${qty}→${now}`)
       }
-      for (const [iid] of incoming) {
-        if (!deducted.has(iid)) changed.push(`품목#${iid} 추가됨`)
+      for (const [k] of incoming) {
+        if (!deducted.has(k)) changed.push(`${label(k)} 추가됨`)
       }
 
       if (changed.length > 0) {

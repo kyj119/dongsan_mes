@@ -3245,18 +3245,7 @@ window.dsListToolbar = (function() {
   return { mount: mount, pageSize: pageSize };
 })();
 
-// ── 판매단위 표기 정본 (0620 단위표, 2026-09-17) ─────────────────────────────
-// 라인에 판매단위 스냅샷(sales_unit·sales_qty)이 있으면 「10조(20EA)」, 없으면 「20 EA」.
-// 주문 상세·카드 상세·거래명세서·견적서가 전부 이 한 함수를 쓴다 — 표기가 갈리면 여기만 고친다.
-function salesQtyLabel(line) {
-    var q = Number(line && line.quantity) || 0;
-    var u = (line && line.unit) || 'EA';
-    var su = line && line.sales_unit;
-    var sq = Number(line && line.sales_qty) || 0;
-    if (su && sq > 0) return sq + su + '(' + q + u + ')';
-    return q + ' ' + u;
-}
-window.salesQtyLabel = salesQtyLabel;
+// 판매단위 표기 정본(salesQtyLabel)은 shared/salesQtyLabel.js 로 옮겼다 — 독립 문서(거래명세서·견적서)도 싣기 위해.
 
 // ── [개발 전용] 표 셀 잘림 감시자 ────────────────────────────────────────────
 // 왜 있나(2026-09-18 전수 조사): `.ds-table` 은 table-layout:fixed + td{overflow:hidden}

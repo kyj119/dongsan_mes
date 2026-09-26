@@ -258,6 +258,12 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     // 새 PO status 사전 계산 (in-memory, 쓰기 전)
     const willAllReceived = (poItems as PoItemRow[]).every((pi) => {
       const match = perItemPrep.find(p => p.poItemId === (pi.id as number))
+      // 라인 line_status(아래 UPDATE)와 **같은 축**으로 닫는다 — 예상수량 라인은 롤 수로 판정.
+      //   수량으로만 보면 라인은 RECEIVED 인데 헤더는 PARTIAL_RECEIVED 에 영영 남는다.
+      if (Number(pi.qty_is_estimate || 0) === 1 && Number(pi.order_packs || 0) > 0) {
+        const afterPacks = Number(pi.received_packs || 0) + (match ? match.receivePacks : 0)
+        return afterPacks >= Number(pi.order_packs)
+      }
       const afterReceived = Number(pi.received_quantity || 0) + (match ? match.receiveQty : 0)
       return afterReceived >= Number(pi.quantity)
     })

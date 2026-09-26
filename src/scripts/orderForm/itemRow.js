@@ -316,8 +316,11 @@
                     const clientIdEl = document.getElementById('clientId');
                     const clientId = clientIdEl ? clientIdEl.value : '';
                     if (clientId && item.id) {
+                        // 요청 시점 값을 기억해 두고, 응답이 올 때까지 사람이(또는 단가 제안이) 바꿨으면 덮지 않는다
+                        //   — await 없이 던진 응답이 늦게 와서 입력값을 지우던 경쟁(CLAUDE.md §결과를 삼키는 두 가지)
+                        var priceAtRequest = priceInp.value;
                         axios.get('/api/price-list/calculate?item_id=' + item.id + '&client_id=' + clientId)
-                            .then(r => { if (r.data?.data?.price > 0) { priceInp.value = fmtMoneyInput(r.data.data.price); calcItem(id); } })
+                            .then(r => { if (r.data?.data?.price > 0 && priceInp.value === priceAtRequest) { priceInp.value = fmtMoneyInput(r.data.data.price); calcItem(id); } })
                             .catch(() => {});
                     }
                 }
