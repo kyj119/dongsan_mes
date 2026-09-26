@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-09-26T15:50:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-09-26T21:35:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -13,6 +13,23 @@
 | 👀 reviewed | 0 |
 | ✔️ done | **572** (변동없음) |
 | ❌ rejected | **6** (변동없음) |
+
+> **Area 6 자기 진화 (2026-09-26T21:35):**
+> - **방법**: 세션 시작 시 로컬 `main`이 origin과 동일(`7b44945`). `npm ci`(0→89), `npx tsc --noEmit` clean.
+> - **churn 확인(앵커 = 직전 Area6 사이클 결과 커밋 `f19075a`)**: `git log f19075a..HEAD` **26커밋**. 이 중 **웹앱 65파일**(`git diff --stat f19075a..HEAD -- src/routes src/scripts src/pages src/layout src/utils migrations index.tsx`)은 별도 "전체 리뷰" 세션(`6c3c7c1` 확정결함30건·`48c743f` 확정결함22건+2건·`20a0d4e`~`981890d` 리뷰결정 1~5차)의 산출물 — 각 커밋이 자체 검증(tsc·build·test:calc·check:fn·check:dom·bind-limit·entity-audit·jwt-decode·local-e2e 4/4)을 이미 통과한 상태로 착륙. **비-웹앱 IA 축 11커밋**(`84252ee`~`3d8f60a`, 사각 빠른 경로 3단계+굳히기 격자 2건+도련색 선택+벡터굽기+판길이설정+판묶음표시)은 여느 Area 로그에도 언급 0건(전수 grep 확인) → 「비-웹앱 런타임 축」(62회차)에 따라 Area6가 직접 정독.
+> - **IA 축 11커밋 직접 검증**: `audit:jsx-ternary`(15개 .jsx, 괄호없는 중첩삼항 0)·`audit:jsx-syntax`(34개 전부 파싱)·`audit:empty-catch`(32파일·421곳 전부 사유 있음)·`audit:ia-jsx`(드리프트 0, 축5는 Z: 미연결로 판정제외) 4종 전부 clean. 각 신규 로직 전용 게이트 전부 통과(`cut:rectfast`·`cut:hardengrid`·`cut:bleed`·`cut:plate`·`cut:plate:baseline`·`cut:butt`·`cut:placement`·`cut:frame`·`cut:trorder`·`cut:shellsync` — 106+53+38+30+24+18항목 등 전 항목 PASS), `ia-deploy.cjs GATES`에 `cut:rectfast`·`cut:hardengrid` 신규 등록 확인(§게이트는 배포경로에 물려야 존재한다 준수). `cut:smoke`·`panel:smoke`는 이 샌드박스의 Playwright 버전(1194)이 스크립트가 요구하는 chrome-headless-shell(1217)과 달라 실행 자체가 불가 — **환경 제약이며 코드 결함 아님**(사각 판정과 무관, 두 게이트 모두 launch 단계에서 실패). 커밋 메시지 전수에 원격(CDP) 실측치가 기록돼 있어(예: 14조각 358.6→60.2초, 21,765mm 판 배치 불변) 실기 검증도 병행된 것으로 확인.
+> - **웹앱 65파일**: Area6 자체 딥다이브는 생략(다음 Area1→5 로테이션이 각자 렌즈로 이 diff를 자연히 커버 — 「churn-bridge 원칙」은 이미 본 파일도 새 렌즈로 재검을 요구하지만, 아직 어느 Area도 이 diff를 한 번도 못 본 상태이므로 지금 Area6가 전량 딥리뷰하면 다음 Area1~5의 몫을 대신하는 중복 낭비). 대신 **open≠unfixed 표준 체크**로 한정.
+> - **🔎 open≠unfixed — #658 fixed-in-tree 확인**: `git diff f19075a..HEAD -- src/routes/taxInvoices/issue.ts`(101줄, `20a0d4e` 결정1차)를 직접 대조한 결과 `entityFilter(c,'o')`가 묶음 조회(`:354,366`)·단건 조회(`:435,442`) 양쪽에 `// #581 법인 가드` 주석과 함께 추가됨 — **#658(entity 격리 누락, 09-21 Area5 발견)이 정확히 요청한 수정과 일치**. `grep -n "entityFilter\|WHERE o\.id" src/routes/taxInvoices/issue.ts` 재확인 결과 남은 bare 참조 0건(6곳 전부 `entityFilter` 적용). **32회차 close-pending 캐시 규칙**에 따라 `verified clean @20a0d4e`로 기록 — 다음 Area6는 이 파일에 churn 없으면 재검증 skip 가능. 이슈는 close-pending(owner 판단 대기).
+> - **나머지 open 11건 — 이번 churn 밖 확인**: `items.ts`(#650)·`feedback.ts`(#659·#660)·`kakao.ts`(#663) 3파일은 65파일 diff에 **없음**(grep 재확인, `--stat` 목록에 부재) → 미해결 유지. `shipments.ts` 5줄 변경(`a160449` "출고 준비중 복귀 차단")은 #654(PATCH /:id/status 고아 라우트) 파일이지만 `billable_after` 호출 추가는 없음 — #654 미해결 유지(단, 이 라우트가 `PREPARING` 되돌리기를 막는 새 로직을 받았다는 것은 완전한 고아는 아닐 수도 있다는 신호라 다음 Area2/3가 프론트 호출처 재확인 시 참고). `orders.js`(#656 관련 파일) 변경은 결제상태 버튼 정리뿐, `bulkShipSelected` 무관 — #656 미해결. `src/scripts/shipments.js`·`src/routes/hr.ts`·`src/utils/crypto.ts`·`src/routes/payroll/year-end.ts`는 diff에 없음 — #661·#626 미해결(변동없음).
+> - **standing scan 1: `npm run audit:migration-number`** — 같은 테이블 DDL 충돌 **0건**(변동없음, 중복번호 쌍 25쌍 그대로).
+> - **standing scan 2: `npm run branch:clean`** — 삭제대상 1건(SAFE-absorbed)·SKIP 1(main). 30건 임계 미달.
+> - **standing scan 3: `npm audit --omit=dev`** — 0건. **standing scan 4: `npm run audit:skills`** — OK, 스킬 19개 상주비용 ~2,662자.
+> - **CI 헬스**: `actions_list(deploy.yml)` 최신 10런 전부 `conclusion:success`(최종 HEAD `7b44945`, run #2096).
+> - **done-sync 절대값 재동기화**: `search_issues(is:closed reason:completed)` **571**(변동없음) · `not_planned` 4 + `duplicate` 2 = rejected **6**(변동없음) · done = GitHub 571 + 이슈생략 자동수정 1(37/53회차 정정규칙 유지) = **572**(변동없음) · open **12**(변동없음, 신규/close 0건).
+> - **🧬 SKILL 강화**: 없음(신규 클래스 없음) — 이번 사이클은 기존 두 규칙의 정확한 재적용: ①「비-웹앱 런타임 축」(62회차)으로 IA 11커밋을 다른 Area가 절대 못 보는 유일한 지점에서 정독 ②「close-pending 캐시」(32회차)로 #658 fixed-in-tree를 sha와 함께 기록. area-6-self-evolution.md `line N` 잔여참조 재확인(0건, 이미 서술식).
+> - **백로그 트림 체크**: `npm run backlog:trim -- --check` — 사이클 로그 8건 → 이번 추가 후 9건, 임계(13건) 미만, 트림 불요.
+> - 신규 이슈 0건(IA 11커밋 게이트 전수 clean, 웹앱 65파일은 자체검증 통과 상태로 다음 Area1~5 로테이션에 위임), 자동수정 0건(고칠 결함 없음 — 이번 회차 성과는 #658 fixed-in-tree 확인), done-sync: open 12(변동없음)·done 572(변동없음)·rejected 6(변동없음). 다음 순번 **Area 1**.
+>
 
 > **Area 5 보안 + 인프라 (2026-09-26T15:50):**
 > - **방법**: 세션 시작 시 detached HEAD `f4dc922`(origin/main과 동일) → 로컬 `main` stale(`0425936`) → `git fetch origin main` + `git checkout -B main origin/main`으로 정합. `npm ci`(0→89), `npx tsc --noEmit` clean.
