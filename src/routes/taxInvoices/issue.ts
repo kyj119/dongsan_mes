@@ -36,10 +36,12 @@ async function ordersAlreadyInvoiced(db: D1Database, orderIds: number[]): Promis
   const hit: number[] = []
   for (let i = 0; i < orderIds.length; i += 80) {
     const chunk = orderIds.slice(i, i + 80)
+    // 순액으로 본다 — 취소발행(계약해제, 음수)으로 상쇄된 주문은 다시 발행할 수 있어야 한다
     const { results } = await db.prepare(
-      `SELECT DISTINCT tio.order_id FROM tax_invoice_orders tio
+      `SELECT tio.order_id FROM tax_invoice_orders tio
        JOIN tax_invoices ti ON tio.tax_invoice_id = ti.id
-       WHERE ti.status != 'CANCELLED' AND tio.order_id IN (${chunk.map(() => '?').join(',')})`
+       WHERE ti.status NOT IN ('CANCELLED', 'DRAFT', 'FAILED') AND tio.order_id IN (${chunk.map(() => '?').join(',')})
+       GROUP BY tio.order_id HAVING SUM(ti.total_amount) > 0`
     ).bind(...chunk).all<{ order_id: number }>()
     for (const r of results || []) hit.push(Number(r.order_id))
   }
@@ -713,8 +715,19 @@ taxInvoicesIssueRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
     if (!existing) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
     }
-    if (!['ISSUED', 'SENT', 'NTS_SUCCESS'].includes(existing.status)) {
-      return c.json({ success: false, error: '발행 또는 전송 완료 상태의 세금계산서만 취소할 수 있습니다.' }, 400)
+    // ★결정(2026-09-26, 이카운트 구조): 국세청에 **전송된** 계산서는 지울 수 없다 — 취소는 「취소발행」
+    //   (수정세금계산서 4 계약의 해제 = 전액 마이너스)이나 다른 사유의 수정발행으로만 한다.
+    //   예전엔 여기서 status 만 CANCELLED 로 바꾸고 바로빌·국세청에는 아무 요청도 안 해, 국세청에는
+    //   유효한 계산서가 MES 에선 사라졌다. 로컬 취소는 **바로빌에 한 번도 안 간 건(ISSUED=바로빌 미설정 로컬 발행)**만.
+    //   판매(청구그룹·미수)는 계산서와 별개다 — 판매 자체를 되돌리려면 회계반영 취소·반품을 따로 한다(이카운트와 같음).
+    if (existing.status === 'SENT' || existing.status === 'NTS_SUCCESS') {
+      return c.json({
+        success: false, need_modify: true,
+        error: '국세청에 전송된 세금계산서는 취소할 수 없습니다. [취소발행(계약해제)] 또는 [수정발행]을 이용하세요.',
+      }, 400)
+    }
+    if (existing.status !== 'ISSUED') {
+      return c.json({ success: false, error: '발행 완료(미전송) 상태의 세금계산서만 취소할 수 있습니다.' }, 400)
     }
 
     // ★계산서 취소·입금 링크 해제·청구그룹 초기화를 **한 batch** 로 — 예전엔 셋이 따로 커밋되고

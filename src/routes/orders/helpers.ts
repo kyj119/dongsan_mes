@@ -203,10 +203,11 @@ export async function recalcOrderBillingGroups(db: D1Database, orderId: number):
 // ── 청구 상태를 그룹 단위로 설정 (split billing P3) ──
 // order_billing_groups 가 청구 정본. orders.billing_status/billed_* 는 미러(롤백용, P5 후 제거).
 // balance 캐시는 사용 안 함 — 미수금은 (order_billing_groups[BILLED] − payments − adjustments) 파생.
-// status: 'BILLED'(청구) | 'PAID'(수금) | null(취소). 반환: orders 행이 실제 변경됐는지(이중 실행 방지).
+// status: 'BILLED'(청구) | null(취소). 반환: orders 행이 실제 변경됐는지(이중 실행 방지).
+// ★'PAID'(수금완료)는 2026-09-26 폐기 — 수금은 입금 파생. 기존 PAID 행(prod 0건)을 읽는 쪽은 BILLED 와 같이 센다.
 // ⚠️ NULL!='BILLED'는 SQLite에서 NULL → `IS NOT 'BILLED'` 사용(미청구 NULL 매칭).
 export async function setOrderBillingStatus(
-  db: D1Database, orderId: number, status: 'BILLED' | 'PAID' | null, billedBy: number | null,
+  db: D1Database, orderId: number, status: 'BILLED' | null, billedBy: number | null,
   accountingDate?: string | null   // 회계반영일 override(없으면 billable_after→delivery_date→KST오늘 폴백)
 ): Promise<boolean> {
   if (status === 'BILLED') {
@@ -218,12 +219,6 @@ export async function setOrderBillingStatus(
       db.prepare(`UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = final_amount,
                     accounting_date = COALESCE(?, billable_after, delivery_date, date('now','+9 hours')), updated_at = CURRENT_TIMESTAMP
                   WHERE id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`).bind(billedBy, ad, orderId)
-    ])
-    return ((r[1].meta.changes as number) || 0) > 0
-  } else if (status === 'PAID') {
-    const r = await db.batch([
-      db.prepare(`UPDATE order_billing_groups SET billing_status = 'PAID' WHERE order_id = ? AND billing_status = 'BILLED'`).bind(orderId),
-      db.prepare(`UPDATE orders SET billing_status = 'PAID', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND billing_status = 'BILLED'`).bind(orderId)
     ])
     return ((r[1].meta.changes as number) || 0) > 0
   } else {

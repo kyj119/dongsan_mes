@@ -29,6 +29,9 @@ export const vatReportsContent = `
           </button>
         </div>
 
+        <!-- 원천 미수집 경고(참고용 화면 — 0 을 믿지 않게) -->
+        <div id="vatWarnings" class="hidden rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800"></div>
+
         <!-- 요약 카드 -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
           <div class="ds-card p-3 text-center">

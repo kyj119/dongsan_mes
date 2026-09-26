@@ -42,12 +42,19 @@ if ($dirty) { Write-Error "uncommitted changes present - commit/discard first:`n
 $all = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
 $wtNorm = $wtPath.ToLower().Replace('/', '\')
 $roots = @($all | Where-Object { $_.CommandLine -and $_.CommandLine.ToLower().Replace('/', '\').Contains($wtNorm) -and $_.CommandLine -match 'wrangler' })
+# Descendants by ParentProcessId — but Windows REUSES PIDs: a process whose real parent died long ago
+# can point at a PID that now belongs to one of OUR processes, and would be swept up as our "child"
+# (2026-09-26: suspected cause of another session's :3000 server disappearing). A real child is
+# always created AFTER its parent, so require child.CreationDate >= parent.CreationDate.
 $owned = New-Object System.Collections.Generic.HashSet[int]
+$born = @{}
+foreach ($p in $all) { $born[[int]$p.ProcessId] = $p.CreationDate }
 foreach ($r in $roots) { [void]$owned.Add([int]$r.ProcessId) }
 do {
   $grew = $false
   foreach ($p in $all) {
-    if (-not $owned.Contains([int]$p.ProcessId) -and $owned.Contains([int]$p.ParentProcessId)) { [void]$owned.Add([int]$p.ProcessId); $grew = $true }
+    $pp = [int]$p.ParentProcessId
+    if (-not $owned.Contains([int]$p.ProcessId) -and $owned.Contains($pp) -and $p.CreationDate -ge $born[$pp]) { [void]$owned.Add([int]$p.ProcessId); $grew = $true }
   }
 } while ($grew)
 $others = @($all | Where-Object { -not $owned.Contains([int]$_.ProcessId) -and (($_.Name -eq 'workerd.exe') -or ($_.Name -eq 'node.exe' -and $_.CommandLine -match 'wrangler' -and $_.CommandLine -match 'pages\s+dev')) })

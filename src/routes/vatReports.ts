@@ -74,6 +74,14 @@ vatReportsRouter.get('/summary', async (c) => {
     const purchaseTax = Number(purchaseAgg?.tax_sum) || 0
     const payableTax = salesTax - purchaseTax
 
+    // ★이 화면은 **참고용**이다(2026-09-26 결정 — 실제 신고는 세무사). 두 원천이 비어 있을 수 있는데
+    //   0 을 그대로 보여 주면 「납부세액 = 매출세액 전부」처럼 읽힌다. 비어 있으면 **비어 있다고** 말한다.
+    //   · 매입 = hometax_invoices(팝빌 제거 후 수집 경로 없음 — 0행이면 미수집이지 매입 0 이 아니다)
+    //   · 매출 = MES 에서 발행한 계산서만(이카운트·홈택스에서 직접 발행한 분은 안 들어온다)
+    const warnings: string[] = []
+    if (!(Number(purchaseAgg?.cnt) > 0)) warnings.push('매입 세금계산서가 수집되지 않았습니다 — 매입세액 0 은 「매입 없음」이 아니라 「미수집」입니다.')
+    if (!(Number(salesAgg?.cnt) > 0)) warnings.push('이 기간 MES 에서 발행한 매출 세금계산서가 없습니다 — 다른 곳에서 발행한 분은 포함되지 않습니다.')
+
     return c.json({
       success: true,
       data: {
@@ -96,6 +104,7 @@ vatReportsRouter.get('/summary', async (c) => {
           list: purchaseList,
         },
         payable_tax: payableTax,
+        warnings,
       }
     })
   } catch (error) {

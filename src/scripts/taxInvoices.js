@@ -256,8 +256,11 @@ function displayInvoices(items) {
     if (inv.status === 'ISSUED' || inv.status === 'SENT' || inv.status === 'NTS_SUCCESS' || inv.status === 'FAILED') {
       actions += '<button onclick="event.stopPropagation();sendTaxInvoiceNotice(' + inv.id + ',\'' + escapeHtml(inv.buyer_name || '') + '\',\'' + escapeHtml(inv.buyer_email || '') + '\',\'' + escapeHtml(inv.invoice_number || '') + '\')" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-200" title="발행 알림 발송"><i class="fas fa-paper-plane text-xs"></i></button>';
     }
-    if (inv.status === 'ISSUED' || inv.status === 'SENT' || inv.status === 'FAILED') {
+    // 취소 = 바로빌에 안 간 로컬 발행(ISSUED)만. 국세청에 전송된 건은 취소발행(계약해제 수정세금계산서)으로.
+    if (inv.status === 'ISSUED') {
       actions += '<button onclick="openCancelModal(' + inv.id + ')" class="px-2 py-1 text-xs bg-red-50 text-red-700 rounded hover:bg-red-200" title="취소"><i class="fas fa-ban"></i></button>';
+    } else if ((inv.status === 'SENT' || inv.status === 'NTS_SUCCESS') && inv.invoice_type !== 'MODIFY') {
+      actions += '<button onclick="event.stopPropagation();openModifyModal(' + inv.id + ',\'' + escapeHtml(inv.invoice_number || '') + '\',\'4\')" class="px-2 py-1 text-xs bg-red-50 text-red-700 rounded hover:bg-red-200" title="취소발행(계약해제)"><i class="fas fa-ban"></i></button>';
     }
     actions += '</div>';
     var orderCell;
@@ -636,10 +639,15 @@ async function viewDetail(id) {
         + ' class="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 text-sm font-medium">'
         + '<i class="fas fa-edit mr-1"></i>수정발행</button>';
     }
-    if (inv.status === 'ISSUED' || inv.status === 'SENT' || inv.status === 'FAILED') {
+    if (inv.status === 'ISSUED') {
       actionBtns += '<button onclick="document.getElementById(\'detailModal\').classList.add(\'hidden\');openCancelModal(' + inv.id + ')"'
         + ' class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium">'
         + '<i class="fas fa-ban mr-1"></i>취소</button>';
+    } else if ((inv.status === 'SENT' || inv.status === 'NTS_SUCCESS') && inv.invoice_type !== 'MODIFY') {
+      // 국세청 전송분은 지울 수 없다 — 전액 마이너스 수정세금계산서(4 계약의 해제)로 상쇄한다(이카운트와 같은 구조)
+      actionBtns += '<button onclick="document.getElementById(\'detailModal\').classList.add(\'hidden\');openModifyModal(' + inv.id + ',\'' + (inv.invoice_number || '') + '\',\'4\')"'
+        + ' class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium" title="수정세금계산서(계약의 해제) — 전액 마이너스로 상쇄">'
+        + '<i class="fas fa-ban mr-1"></i>취소발행</button>';
     }
     document.getElementById('detailContent').innerHTML =
       '<div class="flex justify-between items-start mb-4">'
@@ -764,10 +772,11 @@ async function retryInvoice(id) {
 
 // ==================== 수정발행 ====================
 
-function openModifyModal(id, invoiceNumber) {
+function openModifyModal(id, invoiceNumber, code) {
   modifyTargetId = id;
-  document.getElementById('modifyOriginalInfo').textContent = '원본 세금계산서: ' + invoiceNumber;
-  document.getElementById('modifyCode').value = '1';
+  document.getElementById('modifyOriginalInfo').textContent = '원본 세금계산서: ' + invoiceNumber
+    + (code === '4' ? ' — 취소발행(계약의 해제): 전액 마이너스 계산서를 만들어 상쇄합니다' : '');
+  document.getElementById('modifyCode').value = code || '1';
   document.getElementById('modifyIssueDate').value = (window.kstToday ? window.kstToday() : new Date().toISOString().split('T')[0]);
   document.getElementById('modifyNotes').value = '';
   document.getElementById('modifyModal').classList.remove('hidden');

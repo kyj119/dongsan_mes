@@ -128,11 +128,10 @@ type PromoSource = 'ANNUAL' | 'MONTHLY_A' | 'MONTHLY_B'
 /** 입사일 기준 사용촉진 윈도우 계산(KST). 만료기준일·1차창·2차마감. null=계산불가. */
 function promotionWindow(hireDate: string, source: PromoSource, todayStr: string): { base: string; firstStart: string; firstEnd: string; secondEnd: string } | null {
   if (!hireDate || hireDate.length < 10) return null
-  const hireMD = hireDate.slice(5) // MM-DD
   if (source === 'ANNUAL') {
-    let y = parseInt(todayStr.slice(0, 4), 10) // EXP = today 이후 첫 입사기념일
-    if (`${y}-${hireMD}` <= todayStr) y += 1
-    const exp = `${y}-${hireMD}`
+    // 회계연도 기준(2026-09-26 결정): 연차 만료 = 그해 12/31 → 1차 7/1~7/10, 2차 10/31 까지.
+    //   (만료일 산식 /accrual/yearly 와 같은 기준이어야 한다 — 예전엔 둘 다 입사기념일이었고 부여만 1/1 이었다)
+    const exp = `${todayStr.slice(0, 4)}-12-31`
     return { base: exp, firstStart: addMonths(exp, -6), firstEnd: addDays(addMonths(exp, -6), 10), secondEnd: addMonths(exp, -2) }
   }
   const anniv = addYears(hireDate, 1) // 입사일+1년
@@ -347,6 +346,33 @@ leavesRouter.post('/accrual/monthly', requireRole('ADMIN'), async (c) => {
 
     // 현재 월차 적립값 일괄 조회(병존: MONTHLY 버킷) — N+1 제거 (#321)
     const accruedMap = await loadAnnualAccruedMap(c, employees.map(e => e.id), currentYear, 'MONTHLY')
+    // ★월차는 입사 후 **누적** 개월 수(calcMonthlyAccrualUpTo)인데 행은 달력연도별이다(회계연도 기준, 2026-09-26 결정).
+    //   해가 바뀌면 새 연도 행이 0 에서 시작해 누적값 **전체**를 다시 적립했다(8월 입사 → 전년 4 + 올해 5 = 9, 정답 5).
+    //   → 올해 행에는 「누적 − 전년까지 적립분」만 둔다. 전년에 남은 월차(입사 1년 전까지 유효)는
+    //     올해 행의 carried_over 로 **옮긴다**(전년 행은 같은 양을 expired 로 닫는다) — 잔여 조회가 연도 단위라서다.
+    const priorMonthly = new Map<number, { acc: number; rows: Array<{ id: number; rem: number }> }>()
+    {
+      const ids = employees.map((e) => e.id)
+      for (let i = 0; i < ids.length; i += 80) {
+        const chunk = ids.slice(i, i + 80)
+        const { results: pr } = await c.env.DB.prepare(
+          `SELECT id, employee_id, COALESCE(accrued,0) AS acc,
+                  COALESCE(accrued,0)+COALESCE(granted_extra,0)+COALESCE(carried_over,0)-COALESCE(used,0)-COALESCE(expired,0) AS rem,
+                  expire_date
+             FROM leave_balances
+            WHERE leave_type = 'MONTHLY' AND year < ? AND employee_id IN (${chunk.map(() => '?').join(',')})`
+        ).bind(currentYear, ...chunk).all<{ id: number; employee_id: number; acc: number; rem: number; expire_date: string | null }>()
+        const todayYmd = today.toISOString().slice(0, 10)
+        for (const r of pr || []) {
+          const e = priorMonthly.get(Number(r.employee_id)) || { acc: 0, rows: [] }
+          e.acc += Number(r.acc) || 0
+          // 이미 만료일이 지난 잔여는 옮기지 않는다(만료 배치가 처리한다)
+          const live = !r.expire_date || r.expire_date >= todayYmd
+          if (live && Number(r.rem) > 0) e.rows.push({ id: Number(r.id), rem: Number(r.rem) })
+          priorMonthly.set(Number(r.employee_id), e)
+        }
+      }
+    }
 
     // #416: 직원별 순차 INSERT 2N회(N+1 write) → stmt 누적 후 DB.batch. /grant(sick #321)와 동일 정책(all-or-nothing).
     const stmts: any[] = []
@@ -356,18 +382,29 @@ leavesRouter.post('/accrual/monthly', requireRole('ADMIN'), async (c) => {
       if (annual >= 15) continue // 1년 이상 → 월차 대상 아님
       if (expected <= 0) continue
 
+      const prior = priorMonthly.get(emp.id) || { acc: 0, rows: [] }
       const currentAccrued = accruedMap.get(emp.id) || 0
-      const delta = expected - currentAccrued
+      const thisYearTarget = expected - prior.acc          // 올해 행에 둘 적립값(누적 − 전년까지)
+      const delta = thisYearTarget - currentAccrued
       if (delta <= 0) continue
 
       // 병존: 월차는 leave_type='MONTHLY'로 분리 적립. 만료 = 입사일+1년 일괄(D 결정).
       const expire = addYears(emp.hire_date, 1)
+      // 올해 행이 **처음** 생길 때만 전년 잔여를 옮긴다(재실행해도 두 번 옮기지 않게 — 옮긴 뒤엔 전년 rem 이 0)
+      const carry = accruedMap.has(emp.id) ? 0 : prior.rows.reduce((a, r) => a + r.rem, 0)
+      if (carry > 0) {
+        for (const r of prior.rows) {
+          stmts.push(c.env.DB.prepare(
+            `UPDATE leave_balances SET expired = COALESCE(expired,0) + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+          ).bind(r.rem, r.id))
+        }
+      }
       stmts.push(c.env.DB.prepare(`
-        INSERT INTO leave_balances (employee_id, year, leave_type, accrued, expire_date, entity_id)
-        VALUES (?, ?, 'MONTHLY', ?, ?, ?)
+        INSERT INTO leave_balances (employee_id, year, leave_type, accrued, carried_over, expire_date, entity_id)
+        VALUES (?, ?, 'MONTHLY', ?, ?, ?, ?)
         ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
           accrued = excluded.accrued, expire_date = excluded.expire_date, updated_at = CURRENT_TIMESTAMP
-      `).bind(emp.id, currentYear, expected, expire || null, (emp as any).entity_id || 1))
+      `).bind(emp.id, currentYear, thisYearTarget, carry, expire || null, (emp as any).entity_id || 1))
 
       stmts.push(c.env.DB.prepare(`
         INSERT INTO leave_accrual_logs (employee_id, year, accrual_type, days, reason, run_by, entity_id)
@@ -404,7 +441,6 @@ leavesRouter.post('/accrual/yearly', requireRole('ADMIN'), async (c) => {
 
     // 현재 적립값 일괄 조회(ANNUAL 버킷) — 직원별 SELECT N+1 제거 (#321)
     const accruedMap = await loadAnnualAccruedMap(c, employees.map(e => e.id), currentYear)
-    const todayStr = today.toISOString().slice(0, 10) // KST(+9h) 'YYYY-MM-DD'
 
     // #416: 직원별 순차 INSERT 2N회(N+1 write) → stmt 누적 후 DB.batch. /grant(sick #321)와 동일 정책(all-or-nothing).
     const stmts: any[] = []
@@ -415,11 +451,9 @@ leavesRouter.post('/accrual/yearly', requireRole('ADMIN'), async (c) => {
       const currentAccrued = accruedMap.get(emp.id) || 0
       if (currentAccrued >= annual) continue
 
-      // 연차 만료 = 직전 입사기념일 + 1년(발생일+1년)
-      const hireMD = (emp.hire_date || '').slice(5)
-      let annivYear = today.getUTCFullYear()
-      if (hireMD && `${annivYear}-${hireMD}` > todayStr) annivYear -= 1
-      const expire = hireMD ? addYears(`${annivYear}-${hireMD}`, 1) : ''
+      // 연차 만료 = **그해 12/31**(회계연도 기준, 2026-09-26 결정). 예전엔 1/1 에 부여하면서 만료는
+      //   「직전 입사기념일+1년」이라, 1월에 준 연차가 몇 달 만에 소멸했다(부여와 만료가 다른 기준).
+      const expire = `${currentYear}-12-31`
 
       stmts.push(c.env.DB.prepare(`
         INSERT INTO leave_balances (employee_id, year, leave_type, accrued, expire_date, entity_id)

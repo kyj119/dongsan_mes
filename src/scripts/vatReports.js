@@ -25,6 +25,12 @@ window.loadVatSummary = async function() {
 };
 
 function renderVatSummary(d) {
+  var elWarn = document.getElementById('vatWarnings');
+  if (elWarn) {
+    var ws = d.warnings || [];
+    elWarn.innerHTML = ws.length ? '<i class="fas fa-exclamation-triangle mr-1"></i><b>참고용 집계</b> — 실제 신고는 세무사 장부 기준입니다.<br>' + ws.map(function (w) { return '· ' + escapeHtml(w); }).join('<br>') : '';
+    elWarn.classList.toggle('hidden', ws.length === 0);
+  } else { console.warn('[vatReports] #vatWarnings not found'); }
   var elSalesCount = document.getElementById('vatSalesCount'); if (!elSalesCount) { console.warn('[vatReports] #vatSalesCount not found'); return; }
   elSalesCount.textContent = d.sales.count;
   var elSalesSupply = document.getElementById('vatSalesSupply'); if (!elSalesSupply) { console.warn('[vatReports] #vatSalesSupply not found'); return; }

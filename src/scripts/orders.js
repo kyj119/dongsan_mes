@@ -1415,8 +1415,7 @@ function showOrderModal(order, cards, autoJobs) {
                 ? '<button onclick="setBillingStatus(' + order.id + ', \'BILLED\')" class="px-3 py-1.5 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700"><i class="fas fa-check mr-1"></i>회계반영</button>'
                 : (!order.billing_status || order.billing_status === '') ? '<span class="text-xs text-gray-400">출고완료 후 회계반영 가능</span>' : ''}
               ${order.billing_status === 'BILLED'
-                ? '<button onclick="setBillingStatus(' + order.id + ', \'PAID\')" class="px-3 py-1.5 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-700"><i class="fas fa-won-sign mr-1"></i>수금완료</button>'
-                  + '<button onclick="setBillingStatus(' + order.id + ', \'\')" class="px-3 py-1.5 text-xs font-medium rounded bg-gray-400 text-white hover:bg-gray-500">취소</button>'
+                ? '<button onclick="setBillingStatus(' + order.id + ', \'\')" class="px-3 py-1.5 text-xs font-medium rounded bg-gray-400 text-white hover:bg-gray-500">취소</button>'   // 수금완료 버튼 폐기(2026-09-26) — 수금은 입금 매칭
                 : ''}
               ${order.billing_status === 'PAID'
                 ? '<button onclick="setBillingStatus(' + order.id + ', \'BILLED\')" class="px-3 py-1.5 text-xs font-medium rounded bg-gray-400 text-white hover:bg-gray-500">수금취소</button>'

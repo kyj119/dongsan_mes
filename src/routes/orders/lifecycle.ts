@@ -108,11 +108,10 @@ ordersLifecycleRouter.patch('/:id/billing-status', requireRole('ADMIN', 'MANAGER
       // split billing P3: 그룹 단위 BILLED + orders 미러 (balance 캐시 미사용 — 미수금 파생)
       await setOrderBillingStatus(c.env.DB, Number(id), 'BILLED', user?.id || null)
     } else if (newStatus === 'PAID') {
-      // 수금완료
-      if (oldStatus !== 'BILLED') {
-        return c.json({ success: false, error: '회계반영된 주문만 수금완료 처리할 수 있습니다' }, 400)
-      }
-      await setOrderBillingStatus(c.env.DB, Number(id), 'PAID', user?.id || null)
+      // ★「수금완료(PAID)」 상태 폐기(2026-09-26 결정). 미수는 청구 − 입금 − 조정 **파생**이 정본인데,
+      //   PAID 는 청구액을 미수 집계에서 빼면서 입금은 그대로 차감해 미수 과소·가짜 선수금을 만들었다.
+      //   수금 여부는 입금 등록·매칭으로만 판단한다.
+      return c.json({ success: false, error: '수금완료 상태는 폐기되었습니다. 수금은 입금 등록·매칭으로 반영됩니다.' }, 400)
     } else {
       // 회계반영 취소 (빈 문자열)
       if (oldStatus === 'PAID') {
