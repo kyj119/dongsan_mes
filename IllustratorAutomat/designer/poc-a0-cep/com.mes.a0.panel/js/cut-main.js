@@ -31,7 +31,8 @@
   // ⚠️ 내용을 고치면 **반드시 이 번호를 올린다** — 수동 배포축이라 이 문자열이 "이 PC 가 어느 셸인가"의
   //    유일한 단서다. 0.57.0 하나가 세 상태를 가리키던 사고가 있었고(등록 파라미터·굽기 통합·[◎ 전체]),
   //    그래서 `ia:deploy` 가 번호가 그대로면 배포를 막는다.
-  var SHELL_VERSION = '0.104.0';   // 0.104.0 = ★판짜기 사용감 2차(2026-09-27) — 결과창 요약(첫 줄+경고, 상세는 접기) · 진행 단계·경과 초·[취소](적용 전까지) · 등록 후 대기함 수신 확인(호스트 0.59.0+). 잃는 것 = 결과창 상세가 기본 접힘(한 번 펼치면 기억).
+  var SHELL_VERSION = '0.105.0';   // 0.105.0 = ★단품 칼선 제거(2026-09-27 용준님 「안 쓴다」) — 선택 개체에 칼선·도련만 얹던 [칼선 만들기]와 그 전용 칸(여백·도련 값·사각/실루엣·배경·타공·DXF 동시 저장)을 코드째 뺐다. 판짜기가 같은 엔진으로 칼선·도련·돔보·등록까지 한다. 곡선 칼선·선 도안은 판짜기도 읽으므로 판짜기 「고급 설정」으로 옮겼다. 잃는 것 = 판짜기 없이 제자리 칼선만 얹는 기능.
+  // 0.104.0 = ★판짜기 사용감 2차(2026-09-27) — 결과창 요약(첫 줄+경고, 상세는 접기) · 진행 단계·경과 초·[취소](적용 전까지) · 등록 후 대기함 수신 확인(호스트 0.59.0+). 잃는 것 = 결과창 상세가 기본 접힘(한 번 펼치면 기억).
   // 0.103.0 = ★판짜기 사용감(2026-09-26 「가」 안) — 설정 PC별 기억(배율 제외) · 고급 설정 접기(기본값과 다름 N개) · 설정 요약 줄 · 판 2장+번호 없음 등록은 두 번 눌러야. 잃는 것 없음(칸 위치·기억만, 읽는 경로 불변).
   // 0.102.0 = ★판짜기 작업지시서(2026-09-26) — manifest pieces 에 원본 그림 위 상자 `b`(%) 추가 → 웹이 판별 색 테두리를 겹친다. 잃는 것 없음(키 추가만).
   // 0.101.0 = ★테두리 건너뛰기 모서리(2026-09-26 실기) — 사각 모서리 블록이 대각선으로 들어가 테두리색 덩어리가 남던 것을 축별 2mm 로(bleed.js) · 사각 빠른 경로는 건너뛰기면 전체 도련으로(띠는 건너뛰기를 못 지킨다). 잃는 것 = 건너뛰기+빠른 경로 조합의 띠 속도.
@@ -124,7 +125,7 @@
   //   그때 곡선 칼선의 `B` 줄을 구 호스트가 받으면 아는 접두사가 아니라 **조용히 무시** → 칼선이 통째로
   //   사라진다. 조용히 사라지는 실패가 가장 나쁘므로, 호스트가 못 받으면 **직선으로 낮추고 알린다**.
   var CURVE_MIN_HOST = [0, 5, 0];
-  var VEC_MIN_HOST = [0, 7, 0];      // 벡터 칼선(mesCut_vecCut / nestApply(offset))
+  var VEC_MIN_HOST = [0, 7, 0];      // 벡터 칼선(nestApply(offset))
   var BAKEALL_MIN_HOST = [0, 8, 0]; // 일괄 굽기(mesCut_nestBakeAll)
   // 도련 PNG(Repeat Last Pixel) — 호스트에 `mesCut_bleedPlaceItem` + params `L` 줄 + 굽기 tag 인자가 있어야 한다.
   //   구 호스트는 `L` 줄을 **조용히 무시**하고 도련은 옛 도형별 오프셋으로 떨어진다(링이 지저분해진다).
@@ -225,36 +226,6 @@
   //   ㅇ·ㅁ·0·8 속이 안 뚫린 칼선이 나간다 — 조용히 틀리는 것이 가장 나쁘므로 보내지 않고 알린다.
   var HOLE_MIN_HOST = [0, 19, 0];
   function hostSupportsHoles() { return hostAtLeast(HOLE_MIN_HOST); }
-  // DXF 경로를 **호스트가 정하고 내보내기까지** 한다(`mesCut_exportDxfAuto`). 구 호스트는 경로를
-  //   돌려주고 다시 받는 왕복이라 한글이 `_` 로 죽고 %TEMP% 에 떨어진다 — 그 경로도 남겨 둔다.
-  var DXFAUTO_MIN_HOST = [0, 20, 0];
-  function hostSupportsDxfAuto() { return hostAtLeast(DXFAUTO_MIN_HOST); }
-
-  /**
-   * 단품 DXF 저장 — 새 호스트면 **경로 왕복 없이** 한 번에, 구 호스트면 종전 2단계.
-   * @param cb(okBool, msgLine)
-   */
-  function exportDxfSmart(cb) {
-    if (hostSupportsDxfAuto()) {
-      host('mesCut_exportDxfAuto()', function (dx) {
-        if (String(dx).indexOf('ok') !== 0) { cb(false, 'DXF 실패: ' + dx); return; }
-        // ⚠️ 경로에 `:`·`\` 가 있어 kv() 로 못 자른다 — `path=` 뒤를 통째로 읽는다
-        var at = String(dx).indexOf(';path=');
-        var p = at >= 0 ? String(dx).substring(at + 6) : '(경로 미상)';
-        var whereDoc = /;where=doc/.test(String(dx));
-        cb(true, 'DXF: ' + p + (whereDoc ? '  (원본 .ai 옆)' : '  ⚠ 문서를 저장하면 .ai 옆에 만듭니다'));
-      });
-      return;
-    }
-    host('mesCut_dxfPath()', function (dp) {
-      host('mesCut_exportDxf("' + dp + '")', function (dx) {
-        var ok2 = String(dx).indexOf('ok;') === 0;
-        cb(ok2, ok2
-          ? ('DXF: ' + dp + '\n⚠ 호스트 구버전(' + (hostVersion || '?') + ' < CUT-CEP-0.20.0) — 파일명의 한글이 `_` 로 바뀌고 임시폴더에 저장됩니다. mes-cut-host.jsx 를 배포하세요.')
-          : ('DXF 실패: ' + dx));
-      });
-    });
-  }
   function hostSupportsButt() { return hostAtLeast(BUTT_MIN_HOST); }
   function hostSupportsBleedPng() { return hostAtLeast(BLEEDPNG_MIN_HOST); }
   // ★도련 원색을 마스크 굽기와 **같은 문서에서** 내보내는 호스트인가 (2026-08-27).
@@ -370,10 +341,9 @@
   var elDoc = $('docInfo');
   var elSel = $('selInfo');
   var elLock = $('lockState');
-  var elPunch = $('punch');
 
   // 잠금 시 막을 버튼. **새 버튼은 여기에 넣기만 하면 된다** — 개별 .disabled 조작 금지.
-  var BUSY_IDS = ['btnRefresh', 'btnMakeCut', 'btnNest', 'btnWidth', 'btnRegister', 'btnExportPair', 'btnLockProbe', 'btnLockTest', 'btnUnlock', 'btnSelectAll',
+  var BUSY_IDS = ['btnRefresh', 'btnNest', 'btnWidth', 'btnRegister', 'btnExportPair', 'btnLockProbe', 'btnLockTest', 'btnUnlock', 'btnSelectAll',
   ];
 
   function setBusy(on) {
@@ -425,11 +395,6 @@
     refreshPairName();
     var rb = document.getElementById('btnRegister');
     if (rb) { rb.disabled = !nestReady; rb.title = nestReady ? '네스팅 시트를 주문서 대기함으로 보냅니다' : '네스팅을 먼저 실행하세요'; }
-    var mk = document.getElementById('btnMakeCut');
-    if (!mk) return;
-    if (!window.MesCutGeom) { mk.disabled = true; mk.title = 'geometry.js 미로드 — 패널 설치본을 확인하세요'; return; }
-    mk.disabled = false;
-    mk.title = '선택한 그림 바깥으로 오프셋만큼 벌린 칼선을 만듭니다';
   }
 
   // ★결과창 요약(2026-09-27 ③) — 판짜기 결과가 20줄을 넘어 성공/실패를 바로 못 읽었다.
@@ -632,318 +597,6 @@
     var v = el ? parseFloat(el.value) : NaN;
     return isNaN(v) ? dflt : v;
   }
-  function currentMode() {
-    var r = document.querySelector('input[name="mode"]:checked');
-    return r ? r.value : 'bbox';
-  }
-
-  function makeCut() {
-    if (hostBusy) return;
-    var G = window.MesCutGeom;
-    if (!G) { out('geometry.js 미로드 — 패널 설치본을 확인하세요', 'err'); return; }
-
-    // ★실물 mm → 파일 좌표(÷N). 네스팅과 **같은 규칙**이어야 단건과 판이 어긋나지 않는다.
-    var offsetMm = toFileMm(num('offset', 3));
-    var bleedMm = toFileMm(num('bleed', 3));   // 칼선 **바깥**으로 더 인쇄 — 실물 실측 3mm
-    // auto = 클립 확장(무손실) → 안 되면 가장자리 색 · color = 색 강제 · scale = 사본 확대(옛 방식)
-    var bleedModeEl = document.getElementById('bleedMode');
-    var bleedMode = bleedModeEl ? bleedModeEl.value : 'auto';
-    var mode = currentMode();
-    var bgEl = document.getElementById('bg');
-    var bg = bgEl ? bgEl.value : 'auto';
-    var punchOn = !!(elPunch && elPunch.checked);
-    var punchN = num('punchCount', 8);
-    var punchInsetMm = num('punchInset', 10);
-    var wantDxf = !!(document.getElementById('withDxf') && document.getElementById('withDxf').checked);
-    var cv = resolveCurve();
-    var wantCurve = cv.curve;
-    var fallbackNote = '';   // 벡터→래스터로 내려간 사유. **조용히 달라지지 않게** 항상 결과에 붙인다.
-
-    setBusy(true);
-    out('잠금 확인 중...');
-    host('mesCut_acquireLock("' + PANEL_OWNER + '","make-cut")', function (lk) {
-      if (lk.indexOf('busy:') === 0) {
-        setBusy(false);
-        out(busyMsg(lk), 'err');
-        return;
-      }
-      // ★벡터 우선 — 되면 래스터 왕복 자체를 하지 않는다. 안 되면 **사유를 달고** 래스터로 내려간다.
-      var lm = resolveLineMode();
-      if (lm.vector) {
-        out('벡터 판정 중...');
-        host('mesCut_vecProbe()', function (pb) {
-          if (pb.indexOf('ok') === 0) { runVectorCut(); return; }
-          if (pb.indexOf('fallback;') === 0) {
-            fallbackNote = '\n※ 벡터로는 안 되는 요소가 있어 래스터로 만들었습니다 — ' + (kv(pb.substring(9)).reason || '?');
-            runRasterCut();
-            return;
-          }
-          finish('벡터 판정 실패: ' + pb, 'err');
-        });
-        return;
-      }
-      fallbackNote = lm.note;
-      runRasterCut();
-    });
-
-    /** 벡터 칼선 — 호스트가 일러에게 직접 오프셋시킨다(우리 좌표계·피팅 미경유). */
-    function runVectorCut() {
-      // ★선 도안 판정은 벡터에도 필요하다 — 안 하면 `선 아웃라인`이 **획만** 면으로 바꿔
-      //   실루엣이 아니라 가느다란 고리가 나온다(실측: 70×50 선도안 → 76.35 고리 + 63.65 구멍).
-      var fillEl0 = document.getElementById('fillClosed');
-      host('mesCut_artKind()', function (kindStr) {
-        var fv0 = resolveFill(kindStr, fillEl0 ? fillEl0.value : 'auto');
-        runVectorCutWith(fv0);
-      });
-    }
-    function runVectorCutWith(fv0) {
-      out('벡터 칼선 만드는 중...');
-      host('mesCut_vecCut(' + offsetMm + ',' + (fv0.fill ? 'true' : 'false') + ',' + bleedMm + ',"' + bleedMode + '")', function (vc, badV) {
-        if (!badV && vc.indexOf('fallback;') === 0) {
-          fallbackNote = '\n※ 벡터로는 안 되는 요소가 있어 래스터로 만들었습니다 — ' + (kv(vc.substring(9)).reason || '?');
-          runRasterCut();
-          return;
-        }
-        if (badV || vc.indexOf('ok;') !== 0) { finish('벡터 칼선 실패: ' + vc, 'err'); return; }
-        var d = kv(vc.substring(3));
-        var msg = '칼선 ' + d.paths + '개 · 앵커 ' + d.anchors
-          + '\n여백 ' + offsetMm + 'mm · 벡터(일러 오프셋 · 라운드 조인)'
-          + '\n※ 실루엣 그대로입니다 — 굽기·임계·곡선 복원을 거치지 않아 근사 오차가 없습니다.'
-          + (fv0.note || '');
-        // ★도련을 어떤 방식으로 만들었는지 반드시 말한다 — 둘의 품질이 다르다(clip=무손실 / scale=근사)
-        if (d.bleed === 'clip') msg += '\n도련 ' + bleedMm + 'mm — 클립을 넓혀 원본을 더 드러냈습니다(왜곡·빈 곳 없음).';
-        else if (d.bleed === 'solid' || d.bleed === 'solid-fallback') msg += '\n⚠ 도련 ' + bleedMm + 'mm — 아트에서 색을 얻지 못해 지정색(기본 흰색)으로 채웠습니다. 재단이 밀리면 그 색이 보입니다.';
-        else if (d.bleed === 'edge') msg += '\n도련 ' + bleedMm + 'mm — 가장자리 색을 위치별로 이어 붙였습니다.';
-        else if (d.bleed === 'region') msg += '\n도련 ' + bleedMm + 'mm — 가장자리 도형을 제 색 그대로 밖으로 벌렸습니다. 링에 못 닿는 안쪽 도형은 미리 걸러 내부 선이 칼선 밖으로 나오지 않습니다.';
-        else if (d.bleed === 'region-live') msg += '\n도련 ' + bleedMm + 'mm — 구역별로 벌렸습니다(라이브 효과 유지). 출력·RIP 는 정상이며, 일러에서 편집하면 값이 따라 변합니다.';
-        else if (d.bleed === 'scale') msg += '\n도련 ' + bleedMm + 'mm — 사본을 늘려 채웠습니다. ⚠ 뾰족한 형상은 링 일부가 빌 수 있습니다.';
-        else if (d.bleed === '0') msg += '\n⚠ 도련을 만들지 못했습니다 — ' + bleedFailWhy(d.bleedcode);
-        if (mode === 'bbox') msg += '\n⚠ 벡터는 실루엣만 만듭니다 — 사각(bbox) 칼선이 필요하면 방식을 래스터로 바꾸세요.';
-        if (punchOn) msg += '\n⚠ 타공은 래스터 방식에서만 만들어집니다.';
-        if (!wantDxf) { finish(msg, 'ok'); return; }
-        exportDxfSmart(function (okD, line) { finish(msg + '\n' + line, okD ? 'ok' : 'err'); });
-      });
-    }
-
-    function runRasterCut() {
-      // 해상도: 오프셋을 픽셀로 표현할 수 있어야 한다. 오프셋이 3mm 인데 1mm/px 면 3px 밖에 안 돼 거칠다.
-      // 0.25mm/px 를 기본으로 하되 선택이 크면 픽셀 상한(12M)에 맞춰 자동으로 낮춘다(§4.3).
-      out('래스터화 중...');
-      host('mesCut_selectionInfo()', function (si) {
-        if (si === 'none' || si === 'nodoc') { finish('선택된 그림이 없습니다. 일러에서 대상을 고르고 다시 누르세요.', 'err'); return; }
-        var s = kv(si);
-        // ★래스터 여백 = 오프셋 + 2mm. 여백이 부족하면 **팽창분이 캔버스 밖으로 잘려** 재단선이
-        //   조용히 틀리게 나온다(2026-07-31 실측: 여백 0 일 때 잉크가 닿은 변만 오프셋 0mm 였다).
-        var padMm = offsetMm + 2;
-        var pick = G.pickResolution((parseFloat(s.w) || 100) + padMm * 2, (parseFloat(s.h) || 100) + padMm * 2)
-        var mmpp = Math.min(pick.mmPerPx, 0.5);
-        // ★작업 격자보다 곱게 굽는다 — 0.5mm/px 로 바로 뜨면 경계가 한 겹 부푼다(실측 §6.23)
-        var sub = subPxFactor(mmpp);
-        var fineMmpp = mmpp / sub;
-        var fillEl = document.getElementById('fillClosed');
-        host('mesCut_artKind()', function (kindStr) {
-          var fv = resolveFill(kindStr, fillEl ? fillEl.value : 'auto');
-          host('mesCut_rasterize(' + fineMmpp + ',' + padMm + ',' + (fv.fill ? 'true' : 'false') + ')', function (rz, bad) {
-          if (bad || rz.indexOf('ok;') !== 0) { finish('래스터화 실패: ' + rz, 'err'); return; }
-          var r = kv(rz.substring(3));
-          out('마스크 생성 중...');
-          readPng(r.path, function (err, img) {
-            if (err) { finish(err, 'err'); return; }
-            try {
-              var res = buildCut(G, img, {
-                // ★mmpp 는 **작업 격자**다 — 호스트가 돌려준 굽기 격자(r.mmpp)가 아니다.
-                //   좌표 환산은 축소 후 격자 기준으로 해야 맞는다.
-                mmpp: mmpp, sub: sub, ox: parseFloat(r.ox), oy: parseFloat(r.oy),
-                offsetMm: offsetMm, mode: mode, bg: bg, curve: wantCurve,
-                punchOn: punchOn, punchN: punchN, punchInsetMm: punchInsetMm,
-              });
-              if (res.err) { finish(res.err, 'err'); return; }
-              res.fillNote = fv.note;
-              writeParamsAndDraw(res, wantDxf);
-            } catch (eCalc) { finish('계산 실패: ' + eCalc, 'err'); }
-          });
-          });
-        });
-      });
-    }
-
-    function finish(msg, kind) {
-      host('mesCut_releaseLock("' + PANEL_OWNER + '")', function () {
-        setBusy(false);
-        refreshLock();
-        out(msg + fallbackNote, kind);
-      });
-    }
-
-    function writeParamsAndDraw(res, dxf) {
-      out('칼선 그리는 중...');
-      host('mesCut_paramsPath()', function (pp) {
-        var w = window.cep.fs.writeFile(pp, res.text, window.cep.encoding.UTF8);
-        if (!w || w.err !== 0) { finish('params 쓰기 실패: ' + pp, 'err'); return; }
-        host('mesCut_drawCut()', function (dr, bad2) {
-          if (bad2 || dr.indexOf('ok;') !== 0) { finish('그리기 실패: ' + dr, 'err'); return; }
-          var d = kv(dr.substring(3));
-          var msg = '칼선 ' + d.paths + '개' + (+d.holes ? (' (구멍 ' + d.holes + ')') : '')
-            + (+d.circles ? (' · 타공 ' + d.circles + '개') : '')
-            + '\n오프셋 ' + res.offsetMm + 'mm · 해상도 ' + res.mmpp + 'mm/px'
-            + (res.curve ? ' · 곡선(베지어)' : ' · 직선(폴리라인)')
-            // 어떤 배경 판정을 썼는지 반드시 보여준다 — '흰 배경 제거'는 흰색 그림도 지우므로
-            // 사용자가 결과를 의심할 때 원인을 바로 알 수 있어야 한다.
-            + (mode === 'silhouette'
-              ? ('\n배경: ' + (res.bgMode === 'white' ? '흰 배경 제거' : '투명(alpha)') + (res.bgAuto ? ' (자동)' : ' (지정)')
-                + (res.bgMode === 'white' ? ' — 흰색 그림이 있으면 함께 지워집니다' : ''))
-              : '')
-            + (res.merged ? '\n※ 조각들이 이어졌습니다(오프셋 ≥ 간격/2). 낱개로 떼려면 오프셋을 줄이세요.' : '')
-            + (res.softened ? '\n※ 반투명 요소가 있어 경계를 느슨하게 잡았습니다 — 칼선이 조금 바깥으로 나올 수 있습니다.' : '')
-            + (res.fillNote || '')
-            + cv.note;
-          if (!dxf) { finish(msg, 'ok'); return; }
-          // ★경로는 **호스트가 정하고 내보내기까지** 한다 — 패널이 받아서 다시 인자로 넘기면
-          //   evalScript 가 ASCII 라 한글 파일명이 `_` 로 죽는다(§6.29 실측).
-          exportDxfSmart(function (okD, line) { finish(msg + '\n' + line, okD ? 'ok' : 'err'); });
-        });
-      });
-    }
-  }
-
-  /**
-   * 순수 계산부 — 일러·CEP 에 의존하지 않는다(그래서 스모크에서 그대로 검증할 수 있다).
-   * @returns {text, paths, circles, merged, offsetMm, mmpp, dxfPath} 또는 {err}
-   */
-  /**
-   * 배경 판정 — 마스크를 alpha 로 뜰지 흰 배경을 지울지 (P2).
-   *
-   * 벡터 아트는 투명 배경으로 구워지므로 alpha 로 충분하다. 그런데 **임베드 래스터(사진)는
-   * 대개 불투명 사각형**이라 alpha 로 뜨면 실루엣이 아니라 사각형이 나온다
-   * (2026-07-31 실측: 불투명 래스터 alpha 87.5% vs 흰배경 제거 14.7%).
-   *
-   * ⚠️ 흰 배경 제거는 **흰색 그림도 함께 지운다**. 그래서 기본을 alpha 로 두고,
-   *    "흰 배경이 넓다"고 판단될 때만 자동 전환하며, 무엇을 썼는지 결과에 표시한다.
-   */
-  function pickMaskMode(G, img, requested, sub) {
-    sub = sub || 1;
-    var count = function (m) { var n = 0; for (var i = 0; i < m.length; i++) n += m[i]; return n; };
-    var take = function (mode) {
-      var em = edgeMask(G, img, mode, sub);
-      return { mode: mode, mask: em.m, W: em.W, H: em.H, softened: em.downgraded };
-    };
-    if (requested === 'alpha' || requested === 'white') {
-      var r = take(requested); r.auto = false; return r;
-    }
-    // 자동 판정은 **같은 임계·같은 격자**에서 비교해야 성립한다
-    var a = take('alpha'), w = take('white');
-    var aN = count(a.mask), wN = count(w.mask);
-    // 흰 배경 제거로 잉크가 30% 이상 줄면 = 흰 배경이 넓다 → 그쪽이 실루엣이다.
-    if (wN > 0 && wN < aN * 0.7) { w.auto = true; return w; }
-    a.auto = true; return a;
-  }
-
-  function buildCut(G, img, o) {
-    // ★굽기 격자(img)와 작업 격자(o.mmpp)는 다를 수 있다 — 경계 정확도를 위해 곱게 굽고 줄인다.
-    var picked = pickMaskMode(G, img, o.bg || 'auto', o.sub || 1);
-    var W = picked.W, H = picked.H;
-    var mask = picked.mask;
-    var base = G.traceAll(mask, W, H);
-    if (!base.length) return { err: '잉크를 찾지 못했습니다(선택 영역이 비어 있나요?)' };
-
-    var rPx = o.offsetMm / o.mmpp;
-    var work = (o.mode === 'bbox') ? bboxMask(mask, W, H) : mask;
-    var off = G.offsetMask(work, W, H, rPx);
-    var polys = G.traceAll(off, W, H);
-    if (!polys.length) return { err: '오프셋 결과가 비었습니다' };
-
-    var tol = Math.max(1, 0.4 / o.mmpp); // 0.4mm 이내 오차로 단순화 — 플로터·CNC 가 읽기 좋은 점 수
-    // ★구멍은 **오프셋 적용 뒤** 마스크에서 뽑는다 — 그래야 구멍도 함께 축소되고,
-    //   오프셋이 구멍 반지름을 넘으면 사라진다(칼날이 못 들어가는 물리와 일치).
-    // ⚠️ **최소 구멍 크기로 걸러야 한다** — 글자 사이 좁은 틈이 오프셋으로 막히면 갇힌 배경이
-    //    미세 구멍으로 잡힌다(2026-07-31 실측: 한글 6줄에서 구멍 144개가 나왔다).
-    //    칼날이 들어갈 수 없는 크기는 재단선이 아니라 노이즈다.
-    var minHoleMm = toFileMm(MIN_HOLE_MM);
-    var minHolePx = Math.max(4, Math.PI * Math.pow((minHoleMm / 2) / o.mmpp, 2));
-    var holes = G.findHoles(off, W, H, minHolePx);
-    var groups = G.assignHoles(polys, holes);
-
-    var lines = [];
-    var nHole = 0;
-    // 곡선 모드면 접두사가 바뀐다(B=외곽 베지어 · HB=구멍 베지어). 호스트가 넷 다 처리한다.
-    var tagOuter = o.curve ? 'B' : 'P';
-    var tagHole = o.curve ? 'HB' : 'H';
-    var fmt = function (poly) {
-      var parts = [], j;
-      if (o.curve) {
-        // 컨투어 → 큐빅 베지어. 직선 구간은 직선 베지어로 나오므로 코너는 그대로 남는다.
-        var segs = G.fitCurves(poly, tol);
-        if (!segs.length) return null;
-        var bm = G.bezToMm(segs, o.mmpp, o.ox, o.oy, true);
-        parts.push(bm[0][0][0] + ',' + bm[0][0][1]);           // 시작 앵커
-        for (j = 0; j < bm.length; j++) {
-          parts.push(bm[j][1][0] + ',' + bm[j][1][1]);         // 앞 앵커의 오른쪽 핸들
-          parts.push(bm[j][2][0] + ',' + bm[j][2][1]);         // 뒤 앵커의 왼쪽 핸들
-          parts.push(bm[j][3][0] + ',' + bm[j][3][1]);         // 뒤 앵커
-        }
-        return parts.join(' ');
-      }
-      var mm = G.toMm(G.simplify(poly, tol), o.mmpp, o.ox, o.oy, true);
-      if (mm.length < 3) return null;
-      for (j = 0; j < mm.length; j++) parts.push(mm[j][0] + ',' + mm[j][1]);
-      return parts.join(' ');
-    };
-    for (var i = 0; i < groups.length; i++) {
-      var outer = fmt(groups[i].outer.poly);
-      if (!outer) continue;
-      lines.push(tagOuter + ' ' + outer);
-      for (var h = 0; h < groups[i].holes.length; h++) {
-        var hs = fmt(groups[i].holes[h].poly);
-        if (!hs) continue;
-        lines.push(tagHole + ' ' + hs);   // 직전 외곽의 구멍 — 호스트가 compound path 로 묶는다
-        nHole++;
-      }
-    }
-
-    var nC = 0;
-    if (o.punchOn) {
-      var ins = G.insetMask(off, W, H, o.punchInsetMm / o.mmpp);
-      var ip = G.traceAll(ins, W, H);
-      if (ip.length) {
-        var pts = G.sampleEvenly(ip[0].poly, Math.max(2, Math.round(o.punchN)));
-        var pmm = G.toMm(pts, o.mmpp, o.ox, o.oy, true);
-        for (var k = 0; k < pmm.length; k++) { lines.push('C ' + pmm[k][0] + ',' + pmm[k][1] + ',6'); nC++; }
-      }
-    }
-
-    return {
-      text: lines.join('\n'),
-      paths: lines.length - nC - nHole,
-      holes: nHole,
-      circles: nC,
-      merged: (base.length > 1 && polys.length < base.length), // 오프셋으로 조각이 이어졌는가
-      offsetMm: o.offsetMm,
-      mmpp: o.mmpp,
-      curve: !!o.curve,
-      bgMode: picked.mode,
-      bgAuto: picked.auto,
-      softened: !!picked.softened,
-    };
-  }
-
-  /** bbox 모드 = 잉크 전체를 감싸는 사각형을 마스크로 쓴다(오프셋을 주면 라운드사각이 된다). */
-  function bboxMask(mask, W, H) {
-    var L = W, T = H, R = -1, B = -1;
-    for (var y = 0; y < H; y++) {
-      for (var x = 0; x < W; x++) {
-        if (!mask[y * W + x]) continue;
-        if (x < L) L = x; if (x > R) R = x; if (y < T) T = y; if (y > B) B = y;
-      }
-    }
-    var out = new Uint8Array(W * H);
-    if (R < 0) return out;
-    for (var yy = T; yy <= B; yy++) for (var xx = L; xx <= R; xx++) out[yy * W + xx] = 1;
-    return out;
-  }
-
-  // 스모크에서 순수 계산부만 떼어 검증할 수 있게 노출(일러 없이 파이프라인 회귀를 잡는다)
-  window.__mesCutBuild = function (img, o) { return buildCut(window.MesCutGeom, img, o); };
-
   // ── P3: 네스팅 ───────────────────────────────────────────────────
   // 흐름 = 잠금 → 대상 확정 → 조각별 래스터화 → gap 팽창 → 배치(nesting.js) → 새 문서 렌더.
   // 배치 계산은 하네스(cut:nest)가 검증하는 nesting.js 정본이 한다.
@@ -1184,7 +837,7 @@
    *    실제 관행이기도 하다(맞붙임도 bbox 의 변만 긋는다).
    *
    * ⚠️ 덩어리가 **하나면 bbox 를 쓰지 않는다** — 로고·이형 실루엣을 사각으로 뭉개면 제품이 달라진다.
-   * ⚠️ 낱개로 자르려면 [고급 · 단품 칼선] 을 쓴다. makeCut 은 손대지 않았다.
+   * ⚠️ 낱개로 자르려면 그룹을 풀어 조각마다 따로 고른다(단품 칼선은 2026-09-27 제거).
    * @returns {m, filledPx, boxed} boxed=true 면 bbox 로 대체한 것
    */
   function weldPiece(G, m, W, H) {
@@ -1404,7 +1057,6 @@
       // ★개수가 아니라 **번호**를 모은다 — 개수만으로는 화면과 대조할 수 없다(weldNote 주석)
       var filledIds = [], boxedIds = [];
       // 굽기 경로가 바뀐 사유 — 조용히 느려지거나 조용히 달라지지 않게 결과에 싣는다.
-      //   (makeCut 의 fallbackNote 는 **다른 함수의 지역 변수**다. 여기서 건드리면 안 된다)
       var bakeNote = rectWhy || '';
       // ★★어느 굽기 경로로 갔는지 **수치로** 남긴다 (2026-09-05).
       //   같은 파일·같은 배치인데 효율%가 87.8 → 67.3 으로, 굽기가 22.9 → 46.4초로 갈린 실행이
@@ -1518,8 +1170,7 @@
         //     ③ traceAll·findHoles 가 글자마다·글자 속마다 칼선 — 실측 10줄
         //   메운 뒤: 채움 98.9% · isRectish true · 칼선 1줄 · 끼어들기 0 · **판 길이 동일**.
         //   ⚠️ 도련은 영향 없다 — buildBleedPngs 는 자기 원색 PNG(tag='ink')를 따로 굽는다(실측 확인).
-        //   ⚠️ 낱개 재단(시트컷 글자·ㅇ 속 뚫기)이 필요하면 **[고급 · 단품 칼선]** 을 쓴다.
-        //      거기는 손대지 않았다 — makeCut 은 지금도 구멍을 낸다.
+        //   ⚠️ 낱개 재단(시트컷 글자)이 필요하면 그룹을 풀어 조각으로 나눈다(단품 칼선 2026-09-27 제거 · 구멍은 판짜기도 낸다).
         var wc = weldPiece(G, em.m, em.W, em.H);
         if (wc.filledPx) filledIds.push(id + 1);   // 화면 표기와 같은 1-based (#N)
         if (wc.boxed) boxedIds.push(id + 1);
@@ -2579,7 +2230,7 @@
     //   **여백만큼의 라운드가 조용히 각지게** 되고 모서리 대각으로 r(√2−1) 만큼 더 나간다.
     //   여백 0(또는 음수=안쪽)일 때만 칼선이 실제로 사각이다.
     // ★★구멍 — 시트컷 글자(ㅇ·ㅁ·ㅂ·0·8)는 속이 뚫려야 한다 (2026-08-07 용준님).
-    //   단품 칼선(makeCut)에만 있던 것을 판짜기로 옮긴다. 규칙은 **단품과 같아야** 한다:
+    //   단품 칼선(2026-09-27 제거)에만 있던 것을 판짜기로 옮겼다. 규칙:
     //     ① 구멍은 **팽창 후 마스크**(placed)에서 뽑는다 → 여백만큼 작아지고, 여백이 구멍 반지름을
     //        넘으면 사라진다(칼날이 못 들어가는 크기 = 재단선이 아니다 — 물리와 일치).
     //     ② 최소 구멍 크기로 거른다 — 안 하면 글자 사이 좁은 틈이 미세 구멍으로 잡힌다
@@ -3291,9 +2942,9 @@
   //     판 전체가 10배로 틀린다(조용히). 대신 1/1 이 아니면 요약 줄에 뜬다.
   //   ⚠️값을 **읽는 코드는 그대로다**(각자 getElementById) — 여기는 칸에 값을 넣고 꺼낼 뿐이라 동작 경로가 안 바뀐다.
   var NEST_PREF_KEY = 'mesCut.nestPrefs';
-  var NEST_PREF_IDS = ['sheetPreset', 'nestNumber', 'nestNumberMode', 'nestRectFast', 'nestOffset', 'nestGap', 'nestRotate',
+  var NEST_PREF_IDS = ['sheetPreset', 'nestNumber', 'nestNumberMode', 'nestRectFast', 'nestOffset', 'nestGap', 'nestRotate', 'curveCut', 'fillClosed',
     'nestBleed', 'bleedMode', 'bleedColor', 'nestCut', 'nestBakeMm'];
-  var NEST_ADV_IDS = ['nestRectFast', 'bleedMode', 'bleedColor', 'nestCut', 'nestBakeMm'];   // 「고급 설정」 안에 접힌 칸
+  var NEST_ADV_IDS = ['curveCut', 'fillClosed', 'nestRectFast', 'bleedMode', 'bleedColor', 'nestCut', 'nestBakeMm'];   // 「고급 설정」 안에 접힌 칸
   var NEST_WATCH_IDS = NEST_PREF_IDS.concat(['nestMaxLen', 'cutScaleFile', 'cutScale']);
   var nestDefaults = {};
   function prefVal(el) { return el.type === 'checkbox' ? (el.checked ? '1' : '0') : String(el.value); }
@@ -3784,8 +3435,6 @@
   var btnWidth = $('btnWidth');
   if (btnWidth) btnWidth.addEventListener('click', recommendWidth);
 
-  var btnMake = $('btnMakeCut');
-  if (btnMake) btnMake.addEventListener('click', makeCut);
 
   var btnRefresh = $('btnRefresh');
   if (btnRefresh) btnRefresh.addEventListener('click', function () {
@@ -3830,23 +3479,6 @@
     host('mesCut_forceUnlock()', function () { refreshLock(); out('강제 해제됨', 'ok'); });
   });
 
-  // 타공 입력은 체크했을 때만 — 꺼진 값이 조용히 반영되는 경로를 만들지 않는다(A0 '숨은 키워드' 교훈).
-  //   2026-08-06: 잠그는 데 더해 **숨긴다**. 꺼져 있을 때 못 쓰는 칸 2개와 단위 2개가 계속 자리를
-  //   차지했다. 잠금(disabled)은 그대로 유지한다 — 숨김만으로는 값이 그대로 실려 나간다.
-  function punchUi() {
-    var on = !!(elPunch && elPunch.checked);
-    var c = document.getElementById('punchCount'), i = document.getElementById('punchInset');
-    if (c) { c.disabled = !on; c.style.display = on ? '' : 'none'; }
-    if (i) { i.disabled = !on; i.style.display = on ? '' : 'none'; }
-    // 단위 라벨(개·mm 안쪽)도 같이 — 입력만 숨기면 단위만 떠서 더 이상해진다.
-    var row = elPunch && elPunch.closest ? elPunch.closest('.row') : null;
-    if (row) {
-      var units = row.getElementsByClassName('unit');
-      for (var u = 0; u < units.length; u++) units[u].style.display = on ? '' : 'none';
-    }
-  }
-  if (elPunch) elPunch.addEventListener('change', punchUi);
-  punchUi();
 
   // ── 초기화 ───────────────────────────────────────────────────────
   applyGates();

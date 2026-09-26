@@ -91,12 +91,45 @@ window.__adobe_cep__ = {
 `
 
 const browser = await chromium.launch()
+
+// ★엔진 직접 칼선(2026-09-27) — 단품 칼선 제거로 window.__mesCutBuild 가 사라졌다. 그게 지키던 성질
+//   (오프셋 적용·떨어진 조각 보존·구멍 판정·곡선 1+3n·코너 유지)은 **판짜기도 쓰는 geometry.js 사슬**의 성질이라
+//   엔진을 직접 불러 계속 지킨다. 마스크 = 알파 ≥128 (단품의 배경 판정·타공·bbox 는 기능과 함께 빠졌다).
+const ENGINE_CUT = `window.__engineCut = function (img, o) {
+  var G = window.MesCutGeom, W = img.W, H = img.H, m = new Uint8Array(W * H);
+  for (var i = 0; i < W * H; i++) m[i] = img.data[i * 4 + 3] >= 128 ? 1 : 0;
+  var base = G.traceAll(m, W, H); if (!base.length) return { err: 'empty' };
+  var off = G.offsetMask(m, W, H, o.offsetMm / o.mmpp), polys = G.traceAll(off, W, H);
+  var tol = Math.max(1, 0.4 / o.mmpp), minHolePx = Math.max(4, Math.PI * Math.pow(1 / o.mmpp, 2));
+  var groups = G.assignHoles(polys, G.findHoles(off, W, H, minHolePx)), lines = [], nH = 0;
+  var fmt = function (poly) {
+    var parts = [], j;
+    if (o.curve) {
+      var segs = G.fitCurves(poly, tol); if (!segs.length) return null;
+      var bm = G.bezToMm(segs, o.mmpp, o.ox, o.oy, true);
+      parts.push(bm[0][0][0] + ',' + bm[0][0][1]);
+      for (j = 0; j < bm.length; j++) { parts.push(bm[j][1][0] + ',' + bm[j][1][1]); parts.push(bm[j][2][0] + ',' + bm[j][2][1]); parts.push(bm[j][3][0] + ',' + bm[j][3][1]); }
+      return parts.join(' ');
+    }
+    var mm = G.toMm(G.simplify(poly, tol), o.mmpp, o.ox, o.oy, true); if (mm.length < 3) return null;
+    for (j = 0; j < mm.length; j++) parts.push(mm[j][0] + ',' + mm[j][1]);
+    return parts.join(' ');
+  };
+  for (var g = 0; g < groups.length; g++) {
+    var outer = fmt(groups[g].outer.poly); if (!outer) continue;
+    lines.push((o.curve ? 'B ' : 'P ') + outer);
+    for (var h = 0; h < groups[g].holes.length; h++) { var hs = fmt(groups[g].holes[h].poly); if (hs) { lines.push((o.curve ? 'HB ' : 'H ') + hs); nH++; } }
+  }
+  return { text: lines.join('\\n'), paths: lines.length - nH, holes: nH, merged: base.length > 1 && polys.length < base.length, curve: !!o.curve };
+};`
+
 async function openPanel(opts = {}) {
   const p = await browser.newPage()
   const errs = []
   p.on('pageerror', (e) => errs.push(String(e)))
   p.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text()) })
   await p.addInitScript(mkStub(opts))
+  await p.addInitScript(ENGINE_CUT)
   await p.goto(pathToFileURL(PANEL).href)
   await p.waitForTimeout(200)
   // ★2026-08-04 병합 — 패널이 열리면 '가공' 탭이 보이므로 재단 화면은 display:none 이다.
@@ -137,7 +170,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
 {
   const p = await openPanel()
   ok('3 기하 엔진 로드됨', await p.evaluate(() => !!window.MesCutGeom))
-  ok('3 칼선 버튼 활성', !(await p.$eval('#btnMakeCut', (e) => e.disabled)))
+  ok('3 네스팅 버튼 활성', !(await p.$eval('#btnNest', (e) => e.disabled)))
   await p.close()
 }
 // ── 3u 조각 번호 **런타임** — 패널 안에서 꼬리표 붙이기 → 되돌리기 → 결과 문구가 실제로 돈다 (2026-09-23) ──
@@ -213,14 +246,15 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   await p.addInitScript(`Object.defineProperty(window, 'MesCutGeom', { get: () => undefined, configurable: true });`)
   await p.goto(pathToFileURL(PANEL).href)
   await p.waitForTimeout(200)
-  ok('3 엔진 없으면 버튼 잠김', await p.$eval('#btnMakeCut', (e) => e.disabled))
-  ok('3 잠긴 이유가 title 에 있음', (await p.$eval('#btnMakeCut', (e) => e.title)).includes('geometry.js'))
+  await p.evaluate(() => { if (window.MesMainTab) window.MesMainTab.set('cut') })
+  await p.click('#btnNest'); await p.waitForTimeout(100)
+  ok('3 엔진 없으면 네스팅이 이유를 말하고 멈춤', (await p.locator('#cutOut').innerText()).includes('geometry.js'))
   await p.close()
 }
 
 // ── 3b ★칼선 파이프라인 계산부 — 일러 없이 회귀를 잡는다 ─────────────
-// buildCut 은 순수 함수라 합성 마스크로 검증할 수 있다(window.__mesCutBuild 로 노출).
-// 여기서 잡는 것: 오프셋이 실제로 적용되는가 · 다중 조각이 전부 살아남는가 · 타공이 붙는가 · 좌표가 mm 인가.
+// 엔진 사슬을 합성 마스크로 검증한다(window.__engineCut — 위 ENGINE_CUT · 판짜기 조각별 칼선과 같은 엔진).
+// 여기서 잡는 것: 오프셋이 실제로 적용되는가 · 다중 조각이 전부 살아남는가 · 좌표가 mm 인가.
 {
   const p = await openPanel()
   const mkImg = (W, H, draw) => ({ W, H, draw })
@@ -228,54 +262,17 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     // 200×200px 안에 100×100 사각 잉크(투명 배경 = alpha 로 판별)
     const data = new Uint8ClampedArray(W * H * 4)
     for (let y = 50; y < 150; y++) for (let x = 50; x < 150; x++) { data[(y * W + x) * 4 + 3] = 255 }
-    return window.__mesCutBuild({ W, H, ch: 4, data }, {
-      mmpp: 0.5, ox: 10, oy: 100, offsetMm: 3, mode: 'silhouette',
-      punchOn: true, punchN: 8, punchInsetMm: 10,
+    return window.__engineCut({ W, H, ch: 4, data }, {
+      mmpp: 0.5, ox: 10, oy: 100, offsetMm: 3,
     })
   }, { W: 200, H: 200 })
   ok('3b 계산 성공(에러 없음)', !res.err, res.err || '')
   ok('3b 칼선 1개', res.paths === 1, String(res.paths))
-  ok('3b 타공 8개', res.circles === 8, String(res.circles))
   const lines = String(res.text).split('\n')
   ok('3b 폴리곤 줄이 P 로 시작', lines[0].startsWith('P '), lines[0].slice(0, 20))
-  ok('3b 타공 줄이 C 이고 지름 6mm', lines.filter((l) => /^C .*,6$/.test(l)).length === 8)
   // 잉크 50~150px(=25~75mm) + 오프셋 3mm → 원점 ox=10 기준 x 는 32~88mm 범위여야 한다
   const xs = lines[0].slice(2).split(' ').map((s) => +s.split(',')[0])
   ok('3b mm 좌표가 예상 범위', Math.min(...xs) > 30 && Math.max(...xs) < 90, `${Math.min(...xs)}~${Math.max(...xs)}`)
-  await p.close()
-}
-{
-  // ★P2 배경 판정 — 불투명 래스터(사진)는 alpha 로 뜨면 **사각형**이 된다.
-  //   실측(2026-07-31): 불투명 래스터 alpha 87.5% vs 흰배경 제거 14.7%.
-  const p = await openPanel()
-  const mkStar = (opaque) => `(() => {
-    const W=300,H=300,cx=150,cy=150;
-    const d=new Uint8ClampedArray(W*H*4);
-    for(let y=0;y<H;y++)for(let x=0;x<W;x++){
-      const i=(y*W+x)*4, dx=x-cx, dy=y-cy, a=Math.atan2(dy,dx), r=Math.hypot(dx,dy);
-      const t=((a+Math.PI)%(2*Math.PI/5))/(2*Math.PI/5);
-      const rr=45+(110-45)*(1-Math.abs(t-0.5)*2);
-      const inStar = r<=rr;
-      if(inStar){ d[i]=0;d[i+1]=0;d[i+2]=0;d[i+3]=255; }
-      else if(${opaque}){ d[i]=255;d[i+1]=255;d[i+2]=255;d[i+3]=255; }  // 흰 배경(불투명 래스터)
-    }
-    return {W,H,ch:4,data:d};
-  })()`
-  const opt = { mmpp: 0.5, ox: 0, oy: 150, offsetMm: 2, mode: 'silhouette', punchOn: false, punchN: 0, punchInsetMm: 0 }
-
-  const transparent = await p.evaluate(({ src, o }) => window.__mesCutBuild(eval(src), o), { src: mkStar(false), o: { ...opt, bg: 'auto' } })
-  ok('3d 투명 배경 → alpha 채택', transparent.bgMode === 'alpha', transparent.bgMode)
-
-  const opaqueAuto = await p.evaluate(({ src, o }) => window.__mesCutBuild(eval(src), o), { src: mkStar(true), o: { ...opt, bg: 'auto' } })
-  ok('3d 불투명 래스터 → 흰배경 제거 자동 전환', opaqueAuto.bgMode === 'white' && opaqueAuto.bgAuto === true, opaqueAuto.bgMode)
-
-  const opaqueForced = await p.evaluate(({ src, o }) => window.__mesCutBuild(eval(src), o), { src: mkStar(true), o: { ...opt, bg: 'alpha' } })
-  ok('3d 사용자가 alpha 를 지정하면 그대로', opaqueForced.bgMode === 'alpha' && opaqueForced.bgAuto === false, opaqueForced.bgMode)
-
-  // 자동 전환이 실제로 사각형을 면했는가 — 별 실루엣이면 bbox 보다 면적이 훨씬 작다
-  const areaOf = (t) => { const xs = t.split('\n')[0].slice(2).split(' ').map((s) => +s.split(',')[0]); return Math.max(...xs) - Math.min(...xs) }
-  ok('3d 자동 전환 결과가 사각형이 아님', opaqueAuto.text.split('\n')[0].split(' ').length > 8,
-    '점 수 ' + opaqueAuto.text.split('\n')[0].split(' ').length)
   await p.close()
 }
 {
@@ -288,7 +285,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
       const d = Math.hypot(x - cx, y - cy)
       if (d <= 160 && d >= 90) data[(y * W + x) * 4 + 3] = 255
     }
-    return window.__mesCutBuild({ W, H, ch: 4, data }, {
+    return window.__engineCut({ W, H, ch: 4, data }, {
       mmpp: 0.5, ox: 0, oy: 200, offsetMm: 3, mode: 'silhouette', punchOn: false, punchN: 0, punchInsetMm: 0,
     })
   })
@@ -304,7 +301,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     const W = 300, H = 300
     const data = new Uint8ClampedArray(W * H * 4)
     for (let y = 80; y < 220; y++) for (let x = 80; x < 220; x++) data[(y * W + x) * 4 + 3] = 255
-    return window.__mesCutBuild({ W, H, ch: 4, data }, {
+    return window.__engineCut({ W, H, ch: 4, data }, {
       mmpp: 0.5, ox: 0, oy: 150, offsetMm: 3, mode: 'silhouette', punchOn: false, punchN: 0, punchInsetMm: 0,
     })
   })
@@ -319,25 +316,12 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     const data = new Uint8ClampedArray(W * H * 4)
     const box = (x0, x1) => { for (let y = 60; y < 140; y++) for (let x = x0; x < x1; x++) data[(y * W + x) * 4 + 3] = 255 }
     box(40, 100); box(200, 260)   // 간격 100px = 50mm (mmpp 0.5)
-    return window.__mesCutBuild({ W, H, ch: 4, data }, {
+    return window.__engineCut({ W, H, ch: 4, data }, {
       mmpp: 0.5, ox: 0, oy: 100, offsetMm: 3, mode: 'silhouette', punchOn: false, punchN: 0, punchInsetMm: 0,
     })
   })
   ok('3b 떨어진 조각 2개 모두 보존', res.paths === 2, String(res.paths))
   ok('3b 병합 아님으로 보고', res.merged === false, String(res.merged))
-  await p.close()
-}
-
-// ── 4 타공 입력 연동 — 꺼진 값이 조용히 반영되는 경로를 만들지 않는다 ──
-{
-  const p = await openPanel()
-  ok('4 타공 미체크 시 입력 잠김', await p.$eval('#punchCount', (e) => e.disabled))
-  await p.check('#punch')
-  await p.waitForTimeout(50)
-  ok('4 체크하면 개수·인셋 열림', !(await p.$eval('#punchCount', (e) => e.disabled)) && !(await p.$eval('#punchInset', (e) => e.disabled)))
-  await p.uncheck('#punch')
-  await p.waitForTimeout(50)
-  ok('4 해제하면 다시 잠김', await p.$eval('#punchCount', (e) => e.disabled))
   await p.close()
 }
 
@@ -385,8 +369,8 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   })()`
   const opt = { mmpp: 0.5, ox: 0, oy: 150, offsetMm: 2, mode: 'silhouette', bg: 'alpha', punchOn: false, punchN: 0, punchInsetMm: 0 }
 
-  const poly = await p.evaluate(({ src, o }) => window.__mesCutBuild(eval(src), o), { src: mkDisk, o: { ...opt, curve: false } })
-  const bez = await p.evaluate(({ src, o }) => window.__mesCutBuild(eval(src), o), { src: mkDisk, o: { ...opt, curve: true } })
+  const poly = await p.evaluate(({ src, o }) => window.__engineCut(eval(src), o), { src: mkDisk, o: { ...opt, curve: false } })
+  const bez = await p.evaluate(({ src, o }) => window.__engineCut(eval(src), o), { src: mkDisk, o: { ...opt, curve: true } })
 
   ok('3e 직선 모드는 P 로 나감', String(poly.text).split('\n')[0].startsWith('P '))
   ok('3e 곡선 모드는 B 로 나감', String(bez.text).split('\n')[0].startsWith('B '), String(bez.text).slice(0, 12))
@@ -408,7 +392,7 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     for(let y=80;y<220;y++)for(let x=80;x<220;x++) d[(y*W+x)*4+3]=255;
     return {W,H,ch:4,data:d};
   })()`
-  const sq = await p.evaluate(({ src, o }) => window.__mesCutBuild(eval(src), o), { src: mkSquare, o: { ...opt, offsetMm: 0, curve: true } })
+  const sq = await p.evaluate(({ src, o }) => window.__engineCut(eval(src), o), { src: mkSquare, o: { ...opt, offsetMm: 0, curve: true } })
   const sqCorners = await p.evaluate((txt) => {
     const t = txt.split('\n')[0].slice(2).trim().split(/\s+/).map((s) => s.split(',').map(Number))
     const n = (t.length - 1) / 3
@@ -676,27 +660,13 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     document.getElementById('lineMode').value = 'vector'
     return r.vector === false && r.note === ''
   }))
-  // 벡터 경로에서는 **굽지 않는다** — rasterize 가 불리면 왕복이 남아 있다는 뜻이다
-  await p.click('#btnMakeCut'); await p.waitForTimeout(300)
-  const calls = await p.evaluate(() => window.__calls.join('\n'))
-  ok('3k 벡터면 mesCut_vecCut 호출', /mesCut_vecCut\(/.test(calls), calls.split('\n').slice(-4).join(' | '))
-  ok('3k 벡터면 래스터화 안 함', !/mesCut_rasterize\(/.test(calls))
-  ok('3k 결과에 벡터라고 표시', /벡터/.test(await txt(p, '#cutOut')), await txt(p, '#cutOut'))
-  await p.close()
-}
-{
-  // 호스트가 못 한다고 하면 래스터로 내려가되 **사유를 반드시 표시**한다(조용한 변경 금지)
-  const p = await openPanel({ ping: 'CUT-CEP-0.7.0', vecProbe: 'fallback;reason=사진/임베드 이미지 2개' })
-  await p.click('#btnMakeCut'); await p.waitForTimeout(400)
-  const calls = await p.evaluate(() => window.__calls.join('\n'))
-  ok('3k 폴백이면 래스터화로 내려감', /mesCut_rasterize\(/.test(calls) || /mesCut_selectionInfo/.test(calls))
-  ok('3k 폴백이면 사유를 표시', /사진\/임베드 이미지 2개/.test(await txt(p, '#cutOut')), await txt(p, '#cutOut'))
   await p.close()
 }
 {
   const hostSrc = fs.readFileSync(path.join(REPO, 'IllustratorAutomat', 'designer', 'mes-cut-host.jsx'), 'utf8')
-  ok('3k 호스트에 벡터 API 3종', /function mesCut_vecCut\(/.test(hostSrc)
-    && /function mesCut_vecProbe\(/.test(hostSrc) && /function mesCut_vecSilhouette\(/.test(hostSrc))
+  ok('3k 호스트에 벡터 API(판정·실루엣)', /function mesCut_vecProbe\(/.test(hostSrc) && /function mesCut_vecSilhouette\(/.test(hostSrc))
+  // ★단품 칼선은 2026-09-27 제거 — 되살아나 판짜기와 두 벌이 되지 않게 없음을 확인한다
+  ok('3k 단품 칼선 진입점이 없다(제거 유지)', !/function mesCut_(vecCut|drawCut|rasterize)\(/.test(hostSrc))
   ok('3k nestApply 가 벡터 여백을 받는다', /function mesCut_nestApply\(vecOffsetMm, vecFillClosed/.test(hostSrc))
   // ★선 도안을 채우지 않으면 실루엣이 아니라 **고리**가 나온다(실측: 70×50 → 76.35 고리 + 63.65 구멍)
   ok('3k 선 도안은 사본에 채우기를 켠다', /mesCut_vecSilhouette[\s\S]{0,900}fillClosed[\s\S]{0,200}mesCut_fillClosedItem/.test(hostSrc))
@@ -735,8 +705,6 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3r 마스크 처리는 공용', /function addPiece\(id, img\)/.test(panelSrc))
   // ★1장짜리도 모아찍기로 — 재단은 돔보가 있어야 하므로 단품 칼선만으로는 못 자른다
   ok('3r 모아찍기가 1장도 받는다', /if \(n < 1\)/.test(panelSrc))
-  ok('3r 단품 칼선은 기본 접힘',
-    /<details class="grp">/.test(fs.readFileSync(path.join(PANEL_DIR, 'index.html'), 'utf8')))
 }
 
 // ── 3q ★모아찍기 도련 (2026-08-03 지시) ──────────────────────────────
@@ -956,7 +924,6 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
     ok('3s2 bleedMode 가 판짜기 섹션 안',
       html.indexOf('id="bleedMode"') > html.indexOf('<details class="nest"'))
     // 태그(<b>)가 섞이므로 문자 클래스로 '<' 를 막지 않는다
-    ok('3s2 단품 제목이 공용 사실을 말한다', /방식[\s\S]{0,12}은 판짜기와 공용/.test(html))
     ok('3s2 판짜기가 그 칸을 읽는다', /getElementById\('bleedMode'\)/.test(panelSrc))
   }
 
@@ -1139,8 +1106,6 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
       && !/best < 0 \|\| d < bd/.test(h2))
     ok('3x 포기한 조각 수를 밝힌다', /;hardenskip=/.test(h2) && /MESCUT_HARDEN_SKIP\+\+/.test(h2))
   }
-  // ★단품 칼선(makeCut)은 손대지 않았다 — 거기는 지금도 구멍을 낸다.
-  ok('3v 단품 칼선의 구멍은 유지', /var minHoleMm = toFileMm\(MIN_HOLE_MM\);/.test(panelSrc))
   // 엔진 쪽 정본 확인 — 하네스(cut:bench ⑧)가 동작을 검증한다
   ok('3v geometry 가 fillHoles 를 내보낸다',
     /fillHoles: fillHoles,/.test(fs.readFileSync(path.join(PANEL_DIR, 'js', 'geometry.js'), 'utf8')))
@@ -1259,24 +1224,6 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
   ok('3z 호스트가 직전 외곽에 매단다', /cur\.cuts\[cur\.cuts\.length - 1\]/.test(hostSrc))
   ok('3z 호스트가 compound path 로 묶는다', /cl\.compoundPathItems\.add\(\)/.test(hostSrc))
   ok('3z 호스트 버전이 0.19.0 이상', /CUT-CEP-0\.(19|[2-9]\d)\./.test(hostSrc))
-  // ── DXF 경로 (2026-08-08, spec §6.29·§9-7) ─────────────────────────
-  // 종전엔 패널이 경로를 받아 **다시 인자로 넘겼다** → evalScript 가 ASCII 라 한글이 `_` 로 죽고
-  //   `%TEMP%` 에 떨어졌다(실측: `___260723_____________cut.dxf` = 식별 불가).
-  //   왕복을 없애면 두 제약이 같이 사라진다 — 인자로 안 받으니 ASCII 제약이 없다.
-  ok('3d 호스트가 경로를 정하고 내보낸다', /function mesCut_exportDxfAuto\(\)/.test(hostSrc))
-  ok('3d 저장 위치는 .ai 옆(미저장이면 temp)', /doc\.path && doc\.path\.fsName/.test(hostSrc)
-    && /where = 'doc'/.test(hostSrc) && /Folder\.temp\.fsName/.test(hostSrc))
-  ok('3d 한글 파일명을 죽이지 않는다',
-    hostSrc.includes('base = base.replace(/[\\\\\\/:*?"<>|]/g, \'_\')')
-    && !/base\.replace\(\/\[\^A-Za-z0-9_\\-\]\/g, '_'\)[\s\S]{0,400}?exportDxfAuto/.test(hostSrc))
-  ok('3d 경로는 path= 로 맨 뒤에 반환', /'ok;items=' \+ items \+ ';where=' \+ where \+ ';path=' \+ out/.test(hostSrc))
-  ok('3d 패널이 경로를 되넘기지 않는다',
-    /hostSupportsDxfAuto\(\)/.test(panelSrc) && /indexOf\(';path='\)/.test(panelSrc))
-  ok('3d 구 호스트 폴백 + 사유 표시', /DXFAUTO_MIN_HOST = \[0, 20, 0\]/.test(panelSrc)
-    && /한글이 `_` 로 바뀌고 임시폴더에 저장됩니다/.test(panelSrc))
-  ok('3d 호출부가 하나로 모였다',
-    (panelSrc.match(/exportDxfSmart\(function/g) || []).length === 2
-    && (panelSrc.match(/host\('mesCut_exportDxf\("/g) || []).length === 1)
   ok('3y 공유 변은 C 줄로', /lines\.push\('C ' \+ \(sg\.x1 \+ domboMm\(\)\)/.test(panelSrc))
   ok('3y 호스트가 C 줄을 읽는다', /p\[0\] === 'C'/.test(hostSrc))
   ok('3y 호스트가 열린 선분으로 긋는다', /sp\.closed = false;/.test(hostSrc))
@@ -1467,38 +1414,13 @@ const txt = (p, sel) => p.$eval(sel, (e) => e.textContent.trim())
 // ── 3m ★도련 — 칼선 바깥까지 인쇄 (spec §2.11) ────────────────────────
 // 실측: 인쇄 − 칼선 = **3mm/변**(806−800 · 1066−1060 · ~3.4). 10mm 는 돔보 자리다(중심7+반지름3).
 {
-  const p = await openPanel({ ping: 'CUT-CEP-0.7.0', vecCut: 'ok;paths=1;anchors=8;bleed=clip' })
-  ok('3m UI 도련 칸·기본 3mm', await p.evaluate(() => {
-    const el = document.getElementById('bleed')
-    return !!el && el.value === '3'
-  }))
-  await p.click('#btnMakeCut'); await p.waitForTimeout(300)
-  const calls = await p.evaluate(() => window.__calls.join('\n'))
-  ok('3m vecCut 에 도련을 넘긴다', /mesCut_vecCut\(3,\s*(true|false),\s*3,/.test(calls), calls.split('\n').filter((l) => l.includes('vecCut')).join(' | '))
-  // ★두 방식은 품질이 다르다(clip=무손실 / scale=근사) — 어느 쪽인지 반드시 말해야 한다
-  ok('3m 클립 방식을 알린다', /클립을 넓혀/.test(await txt(p, '#cutOut')), await txt(p, '#cutOut'))
+  // 단품 칼선 제거(2026-09-27) — [칼선 만들기]로 도련을 보던 세 블록은 기능과 함께 뺐다.
+  //   도련 방식 칸은 판짜기가 읽으므로 남는다(판짜기 도련 경로는 3q·cut:bleed 가 지킨다).
+  const p = await openPanel()
   ok('3m 방식 선택칸·기본 자동', await p.evaluate(() => {
     const el = document.getElementById('bleedMode')
     return !!el && el.value === 'auto' && [...el.options].map((o) => o.value).join(',') === 'auto,region,scale'
   }))
-  await p.close()
-}
-{
-  // ★0.9.0 재설계 — 클립이 없으면 **여백 구간 단색**이 기본이다.
-  //   도형별 오프셋(region)은 원리상 내부 선을 링 밖으로 내보내서 뺐다(2026-08-04 실사용 3건).
-  const p = await openPanel({ ping: 'CUT-CEP-0.9.6', vecCut: 'ok;paths=1;anchors=8;bleed=region' })
-  await p.click('#btnMakeCut'); await p.waitForTimeout(300)
-  ok('3m 가장자리 색을 잇는다고 알린다', /제 색 그대로 밖으로 벌렸습니다/.test(await txt(p, '#cutOut')), await txt(p, '#cutOut'))
-  ok('3m 지정색 폴백은 경고로 알린다', /지정색/.test(fs.readFileSync(CUT_MAIN, 'utf8')))
-  const calls = await p.evaluate(() => window.__calls.join(' ~ '))
-  ok('3m vecCut 에 방식을 넘긴다', /mesCut_vecCut\(3,\s*(true|false),\s*3,"auto"\)/.test(calls),
-    calls.split(' ~ ').filter((l) => l.includes('vecCut')).join(' | '))
-  await p.close()
-}
-{
-  const p = await openPanel({ ping: 'CUT-CEP-0.7.0', vecCut: 'ok;paths=1;anchors=8;bleed=scale' })
-  await p.click('#btnMakeCut'); await p.waitForTimeout(300)
-  ok('3m 확대 폴백이면 빌 수 있다고 경고', /링 일부가 빌 수 있습니다/.test(await txt(p, '#cutOut')), await txt(p, '#cutOut'))
   await p.close()
 }
 {
