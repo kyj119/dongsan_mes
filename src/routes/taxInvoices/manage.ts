@@ -181,36 +181,24 @@ taxInvoicesManageRouter.post('/:id/refresh-status', requireEditOrRole('/tax-invo
     }
 
     const statusResult = await provider.getStatus(invoice.invoice_number)
+    // 음수 = 바로빌 조회 실패(인증·미존재 등). 예전엔 상태를 안 바꾼 채 success:true 로 끝나 「조회는 됐는데 그대로」로 보였다.
+    if (statusResult.status === 'ERROR') {
+      return c.json({ success: false, error: `바로빌 상태 조회 실패 (코드 ${statusResult.stateCode})` }, 502)
+    }
 
-    // stateCode → 시스템 상태 매핑
-    // 2: 승인대기, 3: 발행완료, 4: 발행거부, 100: 국세청 전송중,
-    // 110: 국세청 전송성공, 111: 국세청 전송실패
     let newStatus = invoice.status
     let ntsResultCode = null as string | null
     let ntsResultMessage = null as string | null
-    const stateCode = statusResult.stateCode || 0
 
-    // ★바로빌은 국세청 전송 상태를 NTSSendState 로 준다(WSDL). 값 해석은 보수적으로 —
-    //   4 = 전송 완료 · 5 = 전송 실패 · 2·3 = 전송 대기/중. **그 밖의 값이면 상태를 바꾸지 않는다**
-    //   (모르는 코드로 성공·실패를 단정하지 않는다). 첫 실발행 때 rawResponse 로 코드표를 재확인할 것.
-    if (statusResult.ntsSendState != null && statusResult.ntsSendState > 0) {
-      const ns = statusResult.ntsSendState
-      if (ns === 4) { newStatus = 'NTS_SUCCESS'; ntsResultCode = '4'; ntsResultMessage = statusResult.ntsSendResult || '국세청 전송 성공' }
-      else if (ns === 5) { newStatus = 'NTS_FAILED'; ntsResultCode = '5'; ntsResultMessage = statusResult.ntsSendResult || '국세청 전송 실패' }
-      else if (ns === 2 || ns === 3) { newStatus = 'SENT' }
-    } else if (stateCode >= 110) {
-      // 국세청 전송 결과
-      newStatus = stateCode === 110 ? 'NTS_SUCCESS' : 'NTS_FAILED'
-      ntsResultCode = String(stateCode)
-      ntsResultMessage = stateCode === 110 ? '국세청 전송 성공' : '국세청 전송 실패'
-    } else if (stateCode === 100) {
-      newStatus = 'SENT' // 전송중 유지
-    } else if (stateCode === 3) {
-      newStatus = 'SENT'
-    } else if (stateCode === 4) {
-      newStatus = 'FAILED'
-      ntsResultMessage = '발행 거부됨'
-    }
+    // ★국세청 결과는 NTSSendState 하나로만 판정한다. 코드표 = 바로빌 개발자센터 가이드 샘플(상태 동기화):
+    //   1 전송전 · 2·3 전송중 · 4 전송성공 · 5 전송실패. 그 밖의 값(0 등)이면 상태를 바꾸지 않는다.
+    //   BarobillState(1000 임시저장·3014 발급완료·5031 발급취소 …)는 **문서 상태**라 여기서 성공·실패로 읽지 않는다 —
+    //   예전 팝빌 체계 분기(stateCode ≥110 → 전송실패)가 이 값을 받아 임시저장·발급취소를 「국세청 전송실패」로
+    //   찍을 수 있었다(2026-09-26 제거, prod 발행 0건이라 피해 없음).
+    const ns = statusResult.ntsSendState
+    if (ns === 4) { newStatus = 'NTS_SUCCESS'; ntsResultCode = '4'; ntsResultMessage = statusResult.ntsSendResult || '국세청 전송 성공' }
+    else if (ns === 5) { newStatus = 'NTS_FAILED'; ntsResultCode = '5'; ntsResultMessage = statusResult.ntsSendResult || '국세청 전송 실패' }
+    else if (ns === 2 || ns === 3) { newStatus = 'SENT' }
 
     // 국세청 승인번호 업데이트 (있으면)
     const ntsApproval = statusResult.ntsApproval || null
@@ -243,7 +231,7 @@ taxInvoicesManageRouter.post('/:id/refresh-status', requireEditOrRole('/tax-invo
     return c.json({
       success: true,
       data: updated,
-      provider: { stateCode, stateDT: statusResult.stateDT, ntsApproval }
+      provider: { stateCode: statusResult.stateCode, barobillState: statusResult.barobillState, ntsSendState: statusResult.ntsSendState, stateDT: statusResult.stateDT, ntsApproval }
     })
   } catch (error) {
     console.error('src/routes/taxInvoices.ts error:', error)
