@@ -15,7 +15,7 @@ import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { checkMaterialCoverage, describeGap, type CoverageGap } from '../../utils/materialShortageCheck'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
-import { setOrderBillingStatus } from './helpers'
+import { setOrderBillingStatus, recalcOrderBillingGroups, countLiveInvoicesForOrder } from './helpers'
 // 여신 판정 정본. 내부법인·현금소매 제외(EXEMPT)와 잔액 파생을 헬퍼가 함께 담당하므로
 // 여기서 deriveClientBalance·isInternalEntityClient 를 따로 부르지 않는다.
 import { evaluateClientCredit } from '../ledger/credit-helpers'
@@ -105,6 +105,14 @@ ordersLifecycleRouter.patch('/:id/billing-status', requireRole('ADMIN', 'MANAGER
       if (order.status !== 'SHIPPED' && order.status !== 'COMPLETED') {
         return c.json({ success: false, error: '출고완료 후(출고/배송완료) 주문만 회계반영 가능합니다' }, 400)
       }
+      // /bill 과 같은 가드 — 주문 목록 회계반영(UI)은 이 경로를 탄다. 없으면 단가 미정(0원) 라인이
+      //   빠진 채 청구되고 그룹이 동결돼 나중에 단가를 확정해도 미수에 안 들어온다(2026-09-26 실측).
+      const pendingPrice = await c.env.DB.prepare(
+        `SELECT 1 FROM order_items WHERE order_id = ? AND price_status = 'PENDING' LIMIT 1`
+      ).bind(id).first()
+      if (pendingPrice) {
+        return c.json({ success: false, error: '단가 미정 품목이 있는 주문은 회계반영할 수 없습니다. 먼저 단가를 확정해주세요.' }, 400)
+      }
       // split billing P3: 그룹 단위 BILLED + orders 미러 (balance 캐시 미사용 — 미수금 파생)
       await setOrderBillingStatus(c.env.DB, Number(id), 'BILLED', user?.id || null)
     } else if (newStatus === 'PAID') {
@@ -118,7 +126,14 @@ ordersLifecycleRouter.patch('/:id/billing-status', requireRole('ADMIN', 'MANAGER
         // PAID에서 되돌리기는 허용하지 않음
         return c.json({ success: false, error: '수금완료 상태에서는 직접 미확인으로 변경할 수 없습니다' }, 400)
       }
+      // 세금계산서가 걸린 채 청구를 풀면 계산서는 남고 미수에서만 빠진다(2026-09-26 실측) — 삭제 가드와 같은 기준.
+      if (await countLiveInvoicesForOrder(c.env.DB, id) > 0) {
+        return c.json({ success: false, error: '세금계산서가 연결된 주문은 회계반영을 취소할 수 없습니다. 먼저 세금계산서를 취소하세요.' }, 400)
+      }
       await setOrderBillingStatus(c.env.DB, Number(id), null, user?.id || null)
+      // 청구 중 수정된 금액은 동결 그룹에 반영되지 않는다 → 풀린 지금 현재 주문 기준으로 다시 잡는다.
+      //   안 하면 재청구가 옛 금액으로 미수를 잡는다(수정 → 청구취소 → 재청구, 2026-09-26 실측 2,250원 과소).
+      await recalcOrderBillingGroups(c.env.DB, Number(id))
     }
 
     return c.json({ success: true, data: { billing_status: newStatus || null } })
@@ -456,6 +471,14 @@ ordersLifecycleRouter.patch('/:id/cancel', requireEditOrRole('/orders', 'MANAGER
     }
     if (order.status === 'SHIPPED') {
       return c.json({ success: false, error: '출고완료 주문은 취소할 수 없습니다.' }, 400)
+    }
+    // 삭제(core.ts)와 같은 가드 — 미출고 주문도 계산서 선발행으로 청구될 수 있다. 취소하면 CANCELLED 필터로
+    //   미수에서 사라지고 계산서만 남는다(2026-09-26 실측).
+    if (order.billing_status === 'BILLED' || order.billing_status === 'PAID') {
+      return c.json({ success: false, error: '회계반영된 주문은 취소할 수 없습니다. 먼저 회계반영을 취소하세요.' }, 400)
+    }
+    if (await countLiveInvoicesForOrder(c.env.DB, id) > 0) {
+      return c.json({ success: false, error: '세금계산서가 연결된 주문은 취소할 수 없습니다. 먼저 세금계산서를 취소하세요.' }, 400)
     }
 
     // #55: 부분 출고 체크 — 출고된 카드가 1장이라도 있으면 취소 거부

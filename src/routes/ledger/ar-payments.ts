@@ -11,7 +11,7 @@ import { requireEditOrRole } from '../../middleware/permissions'
 import { createPayment } from '../../lib/payments'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
-import { getEntityId, entityFilter } from '../../utils/entityFilter'
+import { getEntityId, getWriteEntityId, entityFilter } from '../../utils/entityFilter'
 import { deriveClientBalance, type PaymentRow, type AdjustmentRow } from './ar-helpers'
 
 const arPaymentsRouter = new Hono<HonoEnv>()
@@ -39,6 +39,10 @@ arPaymentsRouter.post('/payment', requireEditOrRole('/ledger', 'MANAGER'), async
     }
 
     // createPayment 공유 함수 사용 (client 존재 확인 + INSERT + balance 차감 포함)
+    // 전체 모드(0)에서 `getEntityId(c) || 1` 로 쓰면 선명·청주 거래처 건이 동산(1)에 기록돼 법인별 잔액이 양쪽 다 틀어진다
+    //   (2026-09-26 실측). 재고 쓰기(getWriteEntityId)와 같은 규칙 — 법인을 골라야 쓴다.
+    const payEntityId = getWriteEntityId(c)
+    if (payEntityId == null) return c.json({ success: false, error: '전체 모드에서는 입금·지급·조정을 등록할 수 없습니다. 상단에서 법인을 선택하세요.' }, 400)
     let result: { payment_id: number; new_balance: number }
     try {
       result = await createPayment(c.env.DB, {
@@ -49,7 +53,7 @@ arPaymentsRouter.post('/payment', requireEditOrRole('/ledger', 'MANAGER'), async
         reference_number: paymentData.reference_number,
         notes: paymentData.notes,
         created_by: user?.id || 1,
-        entity_id: getEntityId(c) || 1,
+        entity_id: payEntityId,
       })
     } catch (err) {
       if (err instanceof Error && err.message.startsWith('Client not found')) {
@@ -328,6 +332,10 @@ arPaymentsRouter.post('/adjustment', requireEditOrRole('/ledger', 'MANAGER'), as
       return c.json({ success: false, error: 'Client not found' }, 404)
     }
 
+    // 전체 모드(0)에서 `getEntityId(c) || 1` 로 쓰면 선명·청주 거래처 건이 동산(1)에 기록돼 법인별 잔액이 양쪽 다 틀어진다
+    //   (2026-09-26 실측). 재고 쓰기(getWriteEntityId)와 같은 규칙 — 법인을 골라야 쓴다.
+    const adjEntityId = getWriteEntityId(c)
+    if (adjEntityId == null) return c.json({ success: false, error: '전체 모드에서는 입금·지급·조정을 등록할 수 없습니다. 상단에서 법인을 선택하세요.' }, 400)
     const result = await c.env.DB.prepare(`
       INSERT INTO adjustments (client_id, order_id, type, amount, reason, created_by, entity_id)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -338,7 +346,7 @@ arPaymentsRouter.post('/adjustment', requireEditOrRole('/ledger', 'MANAGER'), as
       amount,
       body.reason,
       user?.id || null,
-      getEntityId(c) || 1
+      adjEntityId
     ).run()
 
     // split billing P3: balance 캐시 미사용 — 감액 INSERT만 (미수금은 파생).

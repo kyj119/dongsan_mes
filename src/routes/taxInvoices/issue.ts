@@ -12,7 +12,7 @@ import { requireAccessOrRole, requireEditOrRole } from '../../middleware/permiss
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
 import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
-import { generateInvoiceNumber, getCompanySettings, issueTaxInvoice, createSplitInvoices } from './helpers'
+import { generateInvoiceNumber, getCompanySettings, issueTaxInvoice, createSplitInvoices, ordersAlreadyInvoiced } from './helpers'
 import { isCashRetailBrn } from '../../constants/arPolicy'
 import type { TaxInvoiceWithOrder, ClientRow, OrderWithClient } from './helpers'
 
@@ -28,25 +28,6 @@ taxInvoicesIssueRouter.use('/*', authMiddleware, requireAccessOrRole('/tax-invoi
 // 취소 시 POST /:id/cancel 에서 이 백업 주문을 CANCELLED + balance 롤백한다.
 // ============================================================================
 
-/**
- * 이미 유효한(취소 안 된) 계산서에 묶인 주문 — POST / 의 중복 발행 가드.
- * monthly-create(`batch.ts`)의 NOT IN 과 같은 조건이다. 이 경로만 없어서 같은 주문이 두 번 발행될 수 있었다.
- */
-async function ordersAlreadyInvoiced(db: D1Database, orderIds: number[]): Promise<number[]> {
-  const hit: number[] = []
-  for (let i = 0; i < orderIds.length; i += 80) {
-    const chunk = orderIds.slice(i, i + 80)
-    // 순액으로 본다 — 취소발행(계약해제, 음수)으로 상쇄된 주문은 다시 발행할 수 있어야 한다
-    const { results } = await db.prepare(
-      `SELECT tio.order_id FROM tax_invoice_orders tio
-       JOIN tax_invoices ti ON tio.tax_invoice_id = ti.id
-       WHERE ti.status NOT IN ('CANCELLED', 'DRAFT', 'FAILED') AND tio.order_id IN (${chunk.map(() => '?').join(',')})
-       GROUP BY tio.order_id HAVING SUM(ti.total_amount) > 0`
-    ).bind(...chunk).all<{ order_id: number }>()
-    for (const r of results || []) hit.push(Number(r.order_id))
-  }
-  return hit
-}
 
 taxInvoicesIssueRouter.post('/direct', requireEditOrRole('/tax-invoices', 'MANAGER'), async (c) => {
   try {
@@ -447,6 +428,13 @@ taxInvoicesIssueRouter.post('/', requireEditOrRole('/tax-invoices', 'MANAGER'), 
     }
     if ((await ordersAlreadyInvoiced(c.env.DB, [Number(body.order_id)])).length > 0) {
       return c.json({ success: false, error: '이미 세금계산서가 발행된 주문입니다. 먼저 기존 계산서를 취소하세요.' }, 400)
+    }
+    // 묶음 경로와 같은 단가 미정 가드 — 없으면 0원 라인이 빠진 금액으로 계산서가 만들어진다(2026-09-26 실측)
+    const pendingSingle = await c.env.DB.prepare(
+      `SELECT 1 FROM order_items WHERE order_id = ? AND price_status = 'PENDING' LIMIT 1`
+    ).bind(body.order_id).first()
+    if (pendingSingle) {
+      return c.json({ success: false, error: '단가 미정 품목이 있는 주문입니다. 먼저 단가를 확정해주세요.' }, 400)
     }
     if (!order.business_registration_number) {
       return c.json({ success: false, error: '거래처에 사업자등록번호가 등록되어 있지 않습니다.' }, 400)

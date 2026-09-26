@@ -9,7 +9,7 @@ import type { HonoEnv } from '../../types/env'
 import { authMiddleware } from '../../middleware/auth'
 import { requireAccessOrRole, requireEditOrRole } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
-import { getCompanySettings, createSplitInvoices } from './helpers'
+import { getCompanySettings, createSplitInvoices, ordersAlreadyInvoiced } from './helpers'
 import { kstYmd } from '../../utils/kstDate'
 import type { ClientRow, MonthlyEligibleRow } from './helpers'
 
@@ -108,7 +108,8 @@ taxInvoicesBatchRouter.post('/batch-create', requireEditOrRole('/tax-invoices', 
           const orow = await c.env.DB.prepare(`
             SELECT o.*, c.client_name, c.business_registration_number,
               c.representative, c.address, c.business_type, c.business_item,
-              c.email as client_email, c.id as client_id
+              c.email as client_email, c.id as client_id,
+              (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM order_items WHERE order_id = o.id AND price_status = 'PENDING') as has_pending_prices
             FROM orders o
             LEFT JOIN clients c ON o.client_id = c.id
             WHERE o.id IN (${placeholders}) AND o.client_id = ?${efOrders.clause}
@@ -118,6 +119,19 @@ taxInvoicesBatchRouter.post('/batch-create', requireEditOrRole('/tax-invoices', 
 
         if (orders.length !== orderIds.length) {
           results.push({ client_id: group.client_id, client_name: client.client_name, success: false, error: '일부 주문이 존재하지 않거나 거래처·법인이 다릅니다.' })
+          failCount++
+          continue
+        }
+        // POST / 와 같은 가드 — 없어서 같은 주문이 두 번 발행될 수 있었다(2026-09-26 실측). 두 번째 계산서가
+        //   청구그룹의 tax_invoice_id 를 덮어써, 그것을 취소하면 첫 계산서가 살아 있어도 미수가 사라진다.
+        const dupOrders = await ordersAlreadyInvoiced(c.env.DB, orderIds)
+        if (dupOrders.length > 0) {
+          results.push({ client_id: group.client_id, client_name: client.client_name, success: false, error: `이미 세금계산서가 발행된 주문이 포함되어 있습니다(${dupOrders.length}건).` })
+          failCount++
+          continue
+        }
+        if (orders.some((o: any) => Number(o.has_pending_prices) === 1)) {
+          results.push({ client_id: group.client_id, client_name: client.client_name, success: false, error: '단가 미정 품목이 있는 주문이 포함되어 있습니다.' })
           failCount++
           continue
         }

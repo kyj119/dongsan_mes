@@ -152,7 +152,9 @@ ordersCreateRouter.post('/', async (c) => {
       //   행 합계와 주문 총액이 갈린다(화면에서 이미 그렇게 어긋나 있었다).
       const itemAmount = computeLineAmount({ ...item, min_billing_side_cm: minSide }, pricingMethod).final
       totalAmount += itemAmount
-      if (item.vat_included) {
+      // 라인에 저장하는 기본값(미지정=과세 1)과 같은 규칙으로 센다 — 달랐을 때 미지정 주문은 헤더 부가세 0·라인 과세로
+      //   저장돼, 다음 수정 저장에서 부가세가 조용히 붙었다(2026-09-26 실측). 라인 추가(POST /:id/items)는 이미 이 규칙이다.
+      if (item.vat_included !== undefined ? !!item.vat_included : true) {
         vatAmount += itemAmount * vatRatePost
       }
     }

@@ -628,7 +628,7 @@ arLedgerRouter.get('/closing-summary', async (c) => {
   try {
     const [y, mo] = kstYm().split('-').map(Number) // mo: 1-based
     const monthStart = `${y}-${String(mo).padStart(2, '0')}-01`
-    const monthEnd = new Date(y, mo, 0).toISOString().substring(0, 10)
+    const monthEnd = new Date(Date.UTC(y, mo, 0)).toISOString().substring(0, 10)  // UTC 로 만든다 — 로컬 TZ(KST) 런타임에선 하루 앞(29일)으로 잘렸다
 
     const ef = entityFilter(c)
     const efO = entityFilter(c, 'o')

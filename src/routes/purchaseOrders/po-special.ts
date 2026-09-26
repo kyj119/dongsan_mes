@@ -131,15 +131,16 @@ poSpecialRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) 
     const id = c.req.param('id')
     const user = c.get('user')
     const body: { status?: string } = await c.req.json<{ status?: string }>().catch(() => ({}))
-    const targetStatus = body.status || 'CONFIRMED'
+    // 재발주는 새 발주다 — 확정/초안만. 검증이 없어 RECEIVED·PARTIAL_RECEIVED 발주를 바로 만들 수 있었다(2026-09-26 점검).
+    const targetStatus = body.status === 'DRAFT' ? 'DRAFT' : 'CONFIRMED'
 
     // 원본 PO 조회
     const ef = entityFilter(c)  // #358계열: 발주 재주문 원본 법인 격리 (타법인 발주 재주문 차단)
     const originalPo = await c.env.DB.prepare(`
       SELECT id, po_number, supplier_id, expected_date, delivery_location,
-             total_amount, vat_amount, discount_amount, final_amount, notes
+             total_amount, vat_amount, discount_amount, final_amount, notes, entity_id
       FROM purchase_orders WHERE id = ?${ef.clause}
-    `).bind(id, ...ef.params).first<PurchaseOrder & { delivery_location?: string }>()
+    `).bind(id, ...ef.params).first<PurchaseOrder & { delivery_location?: string; entity_id?: number | null }>()
     if (!originalPo) {
       return c.json({ success: false, error: '원본 발주서를 찾을 수 없습니다.' }, 404)
     }
@@ -150,10 +151,24 @@ poSpecialRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) 
       FROM purchase_order_items WHERE po_id = ? ORDER BY sort_order, id
     `).bind(id).all()
 
+    // 헤더 금액은 **라인에서 다시 센다** — 원본 헤더를 복사하면 부분입고 마감(=입고분으로 줄어든 금액)이
+    //   새 발주로 옮겨 가 라인은 전량인데 헤더·AP 는 입고분만 잡혔다(10개 중 4개 마감 원본 → 재발주 AP 4,400 / 라인 11,000, 2026-09-26 실측).
+    //   부가세는 라인별 원 단위(core.ts 생성·마감과 같은 규칙).
+    let reTotal = 0, reVat = 0
+    for (const it of (originalItems || []) as any[]) {
+      const amt = (Number(it.unit_price) || 0) * (Number(it.quantity) || 0)
+      reTotal += amt
+      if (Number(it.vat_included) !== 0) reVat += Math.round(amt * 0.1)
+    }
+    const reDiscount = Math.min(Number(originalPo.discount_amount) || 0, reTotal + reVat)
+    const reFinal = reTotal + reVat - reDiscount
+
     // 새 PO 번호 생성 — po_number 는 전역 UNIQUE(0032·0281 "제거 불가") 이라 법인별 MAX 채번(getNextSeqNumber+entityId)은
     //   타법인이 같은 날 같은 번호를 만들어 UNIQUE 500. 정규 경로(core.ts POST)와 같은 E{eid} 내장 채번.
     const today = kstYmdCompact()
-    const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', getEntityId(c) || 1, today, { suffix: 'P' })
+    // 법인 = 원본 발주의 법인(전체 모드에서 `|| 1` 로 떨어지면 타법인 발주가 동산 AP 로 재발주된다). 번호 E{eid} 도 같은 값.
+    const reEntityId = Number(originalPo.entity_id) || getEntityId(c) || 1
+    const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', reEntityId, today, { suffix: 'P' })
 
     // 새 PO 생성
     const result = await c.env.DB.prepare(`
@@ -167,16 +182,16 @@ poSpecialRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) 
       targetStatus,
       originalPo.expected_date,
       originalPo.delivery_location || null,
-      originalPo.total_amount,
-      originalPo.vat_amount,
-      originalPo.discount_amount || 0,
-      originalPo.final_amount,
+      reTotal,
+      reVat,
+      reDiscount,
+      reFinal,
       originalPo.notes || null,
       `재발주 (원본: ${originalPo.po_number})`,
       id,
       user.id,
       user.id,
-      getEntityId(c) || 1,
+      reEntityId,
       ...(targetStatus === 'CONFIRMED' ? [user.id] : [])
     ).run()
 

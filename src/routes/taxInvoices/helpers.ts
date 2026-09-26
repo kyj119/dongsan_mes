@@ -512,3 +512,23 @@ export async function createSplitInvoices(
   }
   return out
 }
+
+/**
+ * 이미 유효한(취소 안 된) 계산서에 묶인 주문 — POST /·batch-create 의 중복 발행 가드.
+ * monthly-create(`batch.ts`)의 NOT IN 과 같은 조건이다. 이 경로만 없어서 같은 주문이 두 번 발행될 수 있었다.
+ */
+export async function ordersAlreadyInvoiced(db: D1Database, orderIds: number[]): Promise<number[]> {
+  const hit: number[] = []
+  for (let i = 0; i < orderIds.length; i += 80) {
+    const chunk = orderIds.slice(i, i + 80)
+    // 순액으로 본다 — 취소발행(계약해제, 음수)으로 상쇄된 주문은 다시 발행할 수 있어야 한다
+    const { results } = await db.prepare(
+      `SELECT tio.order_id FROM tax_invoice_orders tio
+       JOIN tax_invoices ti ON tio.tax_invoice_id = ti.id
+       WHERE ti.status NOT IN ('CANCELLED', 'DRAFT', 'FAILED') AND tio.order_id IN (${chunk.map(() => '?').join(',')})
+       GROUP BY tio.order_id HAVING SUM(ti.total_amount) > 0`
+    ).bind(...chunk).all<{ order_id: number }>()
+    for (const r of results || []) hit.push(Number(r.order_id))
+  }
+  return hit
+}

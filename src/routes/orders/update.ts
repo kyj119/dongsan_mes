@@ -12,7 +12,7 @@ import { resolveSlot } from '../../utils/productionDeadline'   // 직배 배차 
 import { requireAnyPagePermission, requireEditOrRole } from '../../middleware/permissions'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { getEntityId, entityFilter, findForeignAnalysisIds, foreignAnalysisError } from '../../utils/entityFilter'
-import { resolveAssignedEntity, loadItemMasters, recalcOrderBillingGroups, generateCardsForOrder, resolveLineAxis } from './helpers'
+import { resolveAssignedEntity, loadItemMasters, recalcOrderBillingGroups, generateCardsForOrder, resolveLineAxis, countLiveInvoicesForOrder } from './helpers'
 import { computeLineAmount } from '../../utils/orderLineAmount'
 import { applySalesUnitSnapshots } from '../../utils/itemUnits'
 
@@ -52,6 +52,21 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
           success: false,
           error: '회계반영된 주문은 매니저 이상만 수정할 수 있습니다'
         }, 403)
+      }
+    }
+
+    // 청구·계산서가 걸린 주문의 거래처는 바꾸지 않는다 — 미수는 orders.client_id 로 조인되므로 청구액만 새 거래처로
+    //   옮겨 가고 입금·계산서는 옛 거래처에 남는다(옛 거래처 가짜 선수금·새 거래처 가짜 미수, 2026-09-26 실측).
+    if (orderData.client_id !== undefined && orderData.client_id !== null
+        && Number(orderData.client_id) !== Number(existingOrder.client_id)) {
+      const billedGroup = await c.env.DB.prepare(
+        `SELECT 1 FROM order_billing_groups WHERE order_id = ? AND billing_status IN ('BILLED','PAID') LIMIT 1`
+      ).bind(id).first()
+      if (billedGroup || existingOrder.billing_status === 'BILLED' || await countLiveInvoicesForOrder(c.env.DB, id) > 0) {
+        return c.json({
+          success: false,
+          error: '회계반영·세금계산서가 걸린 주문은 거래처를 바꿀 수 없습니다. 회계반영(계산서)을 취소한 뒤 변경하세요.'
+        }, 400)
       }
     }
 
@@ -200,7 +215,9 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
       // 총액도 **최종 청구액(에누리 반영) 기준** — 자동값으로 잡으면 행 합계와 주문 총액이 갈린다
       const putItemAmt = computeLineAmount({ ...item, min_billing_side_cm: totalAxis.minSide }, totalAxis.pricingMethod).final
       totalAmount += putItemAmt
-      if (item.vat_included) {
+      // 라인에 저장하는 기본값(미지정=과세 1)과 같은 규칙으로 센다 — 달랐을 때 미지정 주문은 헤더 부가세 0·라인 과세로
+      //   저장돼, 다음 수정 저장에서 부가세가 조용히 붙었다(2026-09-26 실측). 라인 추가(POST /:id/items)는 이미 이 규칙이다.
+      if (item.vat_included !== undefined ? !!item.vat_included : true) {
         vatAmount += putItemAmt * vatRatePut
       }
     }

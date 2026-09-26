@@ -289,7 +289,7 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       const itemAmount = (item.unit_price || 0) * (item.quantity || 1)
       totalAmount += itemAmount
       if (item.vat_included !== false && item.vat_included !== 0) {
-        vatAmount += itemAmount * 0.1
+        vatAmount += Math.round(itemAmount * 0.1)  // 라인별 원 단위 — 마감(RECV_VAT)·빠른발주와 같은 규칙. 안 하면 366.3원 같은 끝전이 AP 에 남는다
       }
     }
 
@@ -487,7 +487,7 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       const itemAmount = (item.unit_price || 0) * (item.quantity || 1)
       totalAmount += itemAmount
       if (item.vat_included !== false && item.vat_included !== 0) {
-        vatAmount += itemAmount * 0.1
+        vatAmount += Math.round(itemAmount * 0.1)  // 라인별 원 단위(생성 경로와 같다)
       }
     }
 
@@ -709,6 +709,13 @@ poCoreRouter.patch('/:id/status', async (c) => {
         success: false,
         error: `'${po.status}' → '${newStatus}' 전환은 허용되지 않습니다. 가능한 상태: ${allowed.join(', ') || '없음'}`
       }, 400)
+    }
+    // 부분입고·부분입고 마감은 **입고가 있을 때만** — 입고 0건으로 CONFIRMED→PARTIAL_RECEIVED→RECEIVED 를 손으로 밟으면
+    //   마감 재계산(입고분)이 발주 금액을 0 으로 만들어 AP 가 통째로 사라졌다(2026-09-26 실측). 안 받을 발주는 취소한다.
+    if (newStatus === 'PARTIAL_RECEIVED' || (po.status === 'PARTIAL_RECEIVED' && newStatus === 'RECEIVED')) {
+      if (!(await poHasReceivedLines(c.env.DB, id))) {
+        return c.json({ success: false, error: '입고된 수량이 없습니다. 입고 처리를 먼저 하거나, 받지 않을 발주라면 취소하세요.' }, 400)
+      }
     }
     // 재고가 움직인 발주를 DRAFT 로 되돌리는 것은 막는다(부분입고 → 취소는 위에서 이미 막았다)
     if (newStatus === 'DRAFT' && await poHasReceivedLines(c.env.DB, id)) {

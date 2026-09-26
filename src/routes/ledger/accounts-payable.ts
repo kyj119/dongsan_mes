@@ -5,7 +5,7 @@ import { requireEditOrRole } from '../../middleware/permissions'
 import { createPayment } from '../../lib/payments'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
-import { getEntityId, entityFilter } from '../../utils/entityFilter'
+import { getEntityId, getWriteEntityId, entityFilter } from '../../utils/entityFilter'
 import { deriveSupplierPayable } from '../../utils/supplierPayable'
 import { kstYmd, kstYear } from '../../utils/kstDate'
 import { excludePurchaseNonCounterpartiesSql, isInternalEntityClient } from '../../constants/intercompany'
@@ -486,6 +486,10 @@ apRouter.post('/purchase-payment', requireEditOrRole('/ledger', 'MANAGER'), asyn
       return c.json({ success: false, error: '거래처를 찾을 수 없습니다' }, 404)
     }
 
+    // 전체 모드(0)에서 `getEntityId(c) || 1` 로 쓰면 선명·청주 거래처 건이 동산(1)에 기록돼 법인별 잔액이 양쪽 다 틀어진다
+    //   (2026-09-26 실측). 재고 쓰기(getWriteEntityId)와 같은 규칙 — 법인을 골라야 쓴다.
+    const ppEntityId = getWriteEntityId(c)
+    if (ppEntityId == null) return c.json({ success: false, error: '전체 모드에서는 입금·지급·조정을 등록할 수 없습니다. 상단에서 법인을 선택하세요.' }, 400)
     // Insert purchase payment
     const result = await c.env.DB.prepare(`
       INSERT INTO purchase_payments (
@@ -501,7 +505,7 @@ apRouter.post('/purchase-payment', requireEditOrRole('/ledger', 'MANAGER'), asyn
       body.po_id || null,
       body.notes || null,
       user?.id || 1,
-      getEntityId(c) || 1
+      ppEntityId
     ).run()
 
     // 잔액은 캐시가 아니라 파생이다 — 지급 행이 들어간 순간 이미 반영돼 있다(utils/supplierPayable).
@@ -667,7 +671,10 @@ apRouter.post('/purchase-adjustment', requireEditOrRole('/ledger', 'MANAGER'), a
       return c.json({ success: false, error: 'Supplier not found' }, 404)
     }
 
-    const adjEntityId = getEntityId(c) || 1
+    // 전체 모드(0)에서 `getEntityId(c) || 1` 로 쓰면 선명·청주 거래처 건이 동산(1)에 기록돼 법인별 잔액이 양쪽 다 틀어진다
+    //   (2026-09-26 실측). 재고 쓰기(getWriteEntityId)와 같은 규칙 — 법인을 골라야 쓴다.
+    const adjEntityId = getWriteEntityId(c)
+    if (adjEntityId == null) return c.json({ success: false, error: '전체 모드에서는 입금·지급·조정을 등록할 수 없습니다. 상단에서 법인을 선택하세요.' }, 400)
     const result = await c.env.DB.prepare(`
       INSERT INTO purchase_adjustments (supplier_id, po_id, type, amount, reason, adjustment_date, created_by, entity_id)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)

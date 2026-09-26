@@ -200,6 +200,36 @@ export async function recalcOrderBillingGroups(db: D1Database, orderId: number):
   if (stmts.length > 0) await db.batch(stmts)
 }
 
+// ── 주문에 걸린 살아 있는 세금계산서 수 ──
+// 연결 경로가 셋이다: tax_invoices.order_id(단건) · tax_invoice_orders(묶음) · order_billing_groups.tax_invoice_id(분할).
+// 거기에 그 계산서들의 수정발행(original_invoice_id)까지 한 묶음으로 본다.
+// 「살아 있다」 = ①작성 중(DRAFT·FAILED)인 것이 하나라도 있거나 ②발행된 것의 **순액**이 0 보다 크다.
+//   ★순액인 이유: 전송된 계산서는 지울 수 없어 「취소발행」(수정 4 = 전액 마이너스)으로 상쇄한다(2026-09-26 결정).
+//   원본이 CANCELLED 가 안 되므로 상태만 세면, 상쇄한 뒤의 정상 절차(회계반영 취소 → 출고취소)까지 막힌다.
+//   중복발행 가드(taxInvoices/helpers.ordersAlreadyInvoiced)의 순액 규칙과 같다.
+// 용도: 청구취소·주문취소·거래처 변경이 계산서를 남긴 채 미수에서 청구액을 빼거나 다른 거래처로 옮기지 못하게 한다(2026-09-26 점검).
+export async function countLiveInvoicesForOrder(db: D1Database, orderId: number | string): Promise<number> {
+  const oid = Number(orderId)
+  const row = await db.prepare(`
+    WITH linked AS (
+      SELECT id FROM tax_invoices WHERE order_id = ?
+      UNION SELECT tax_invoice_id FROM tax_invoice_orders WHERE order_id = ?
+      UNION SELECT tax_invoice_id FROM order_billing_groups WHERE order_id = ? AND tax_invoice_id IS NOT NULL
+    ), fam AS (
+      SELECT ti.id, ti.status, ti.total_amount FROM tax_invoices ti
+      WHERE ti.status != 'CANCELLED'
+        AND (ti.id IN (SELECT id FROM linked) OR ti.original_invoice_id IN (SELECT id FROM linked))
+    )
+    SELECT
+      (SELECT COUNT(*) FROM fam WHERE status IN ('DRAFT', 'FAILED')) AS pending,
+      (SELECT COALESCE(SUM(total_amount), 0) FROM fam WHERE status NOT IN ('DRAFT', 'FAILED')) AS net,
+      (SELECT COUNT(*) FROM fam WHERE status NOT IN ('DRAFT', 'FAILED')) AS issued
+  `).bind(oid, oid, oid).first<{ pending: number; net: number; issued: number }>()
+  const pending = Number(row?.pending) || 0
+  const issued = Number(row?.net) > 0 ? (Number(row?.issued) || 0) : 0
+  return pending + issued
+}
+
 // ── 청구 상태를 그룹 단위로 설정 (split billing P3) ──
 // order_billing_groups 가 청구 정본. orders.billing_status/billed_* 는 미러(롤백용, P5 후 제거).
 // balance 캐시는 사용 안 함 — 미수금은 (order_billing_groups[BILLED] − payments − adjustments) 파생.

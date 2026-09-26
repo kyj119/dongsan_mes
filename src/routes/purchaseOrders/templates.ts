@@ -209,7 +209,7 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
       const vatIncluded = ov.vat_included != null ? ov.vat_included : ti.vat_included
       const amount = price * qty
       totalAmount += amount
-      if (vatIncluded) vatAmount += amount * 0.1
+      if (vatIncluded) vatAmount += Math.round(amount * 0.1)  // 라인별 원 단위(발주 생성과 같다)
       return { ...ti, quantity: qty, unit_price: price, amount, vat_included: vatIncluded }
     })
 
