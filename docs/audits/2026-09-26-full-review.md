@@ -283,3 +283,7 @@ WSDL(`ws.baroservice.com/{TI,CARD,BANKACCOUNT}.asmx?WSDL`)을 받아 대조했�
 | 23 | `GetTaxInvoiceState` 응답 = `TaxInvoiceState{BarobillState, NTSSendState, NTSSendKey, NTSSendResult, NTSSendDT, NTSResultDT}` — 코드는 팝빌식 `StateCode`·`NTSConfirmNum` 을 읽어 **상태가 영영 갱신되지 않았다** | 필드명 교정 · 상태 갱신은 `NTSSendState` 4=성공·5=실패·2/3=전송중, **그 외는 변경 안 함**(코드표 원문 미확보 — ⚠️첫 실발행 때 rawResponse 로 재확인) |
 | 21 | 페이지형 응답(`Paged*`)은 `CurrentPage:int` — 오류는 여기에 음수 | `assertBarobillQueryOk` 가 `<CurrentPage>-N` 도 throw → 카드·계좌 조회 4함수 공통. 호출부는 날짜·카드 단위 catch 로 `syncErrors` 에 모아 보여 준다(빈 배열로 삼키지 않음) |
 | 20 | 재시도 = 같은 invoice_number 를 mgtKey 로 재사용 | 재시도 전 `getStatus` — 바로빌에 이미 있으면 FAILED→SENT 복구, NTS_FAILED 는 수정발행 안내 400, 조회 실패 시 종전대로 DRAFT |
+
+## 훅 검사 기준 폴더 (#75, 2026-09-26)
+편집·커밋 훅이 `ROOT`(훅 파일 위치 = 메인 체크아웃)를 검사해, worktree 의 타입 오류·미정의 함수가 통과하고 메인의 남의 WIP 로 막히기도 했다.
+→ `_util.cjs` `fileRoot`(편집 파일의 저장소)·`bashTargetRoot`(`cd X &&`·`git -C X`·입력 cwd 순) — 이 프로젝트 저장소가 아니면 ROOT 폴백. 커밋 게이트는 대상 폴더를 출력한다. `test:hookguard` 에 6건(양방향 확인).

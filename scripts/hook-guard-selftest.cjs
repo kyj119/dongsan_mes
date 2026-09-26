@@ -134,3 +134,23 @@ if (bad2) {
   process.exit(1);
 }
 console.log(`[hook-guard] 해석 OK — 하위 ${SUBDIRS.length}곳 게이트 발동 + 프로젝트 밖 fail-closed`);
+
+// ── 검사 기준 폴더(#75, 2026-09-26) — worktree 에서 편집·커밋하면 **그 worktree** 를 검사해야 한다 ──
+//   (예전엔 훅 파일 위치 = 메인 체크아웃을 검사해 worktree 의 오류가 통과했다). 경로는 이 저장소 기준이라 PC 무관.
+{
+  const u = require('../.claude/hooks/_util.cjs');
+  const n = (s) => String(s || '').split('\\').join('/').toLowerCase();
+  const R = n(ROOT);
+  const cases = [
+    ['fileRoot(src 파일) = 이 저장소', n(u.fileRoot(path.join(ROOT, 'src', 'index.tsx'))) === R],
+    ['fileRoot(저장소 밖) = null(→ 훅은 ROOT 로 폴백)', u.fileRoot(path.join(TMP, 'x.txt')) === null],
+    ['bash: cd "<이 저장소>" && git commit → 이 저장소(입력 cwd 가 밖이어도)', n(u.bashTargetRoot({ cwd: TMP }, `cd "${ROOT}" && git commit -m x`)) === R],
+    ['bash: git -C <이 저장소> commit → 이 저장소', n(u.bashTargetRoot({ cwd: TMP }, `git -C "${ROOT}" commit -m x`)) === R],
+    ['bash: cd 대상이 저장소 밖이면 입력 cwd 로', n(u.bashTargetRoot({ cwd: ROOT }, `cd "${TMP}" && git commit -m x`)) === R],
+    ['bash: 둘 다 밖이면 null(→ 훅은 ROOT 로 폴백)', u.bashTargetRoot({ cwd: TMP }, 'git commit -m x') === null],
+  ];
+  let bad3 = 0;
+  for (const [name, ok] of cases) { if (!ok) { bad3++; console.error(`  MISS  ${name}`); } }
+  if (bad3) { console.error(`[hook-guard] 검사 기준 폴더 회귀 ${bad3}건`); process.exit(1); }
+  console.log(`[hook-guard] 기준 폴더 OK — ${cases.length}건(worktree 편집·커밋은 그 worktree 를 검사)`);
+}

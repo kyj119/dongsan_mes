@@ -1,6 +1,6 @@
 // PreToolUse (matcher: Bash|PowerShell) — 위험명령 차단 + 배포 리마인더 + 커밋 타입체크 게이트.
 // jq 비의존. exit 2 = 차단(모델에 사유 전달). exit 0 = 통과(메시지는 stdout).
-const { ROOT, readInput } = require('./_util.cjs');
+const { ROOT, readInput, bashTargetRoot } = require('./_util.cjs');
 const { HARD_BLOCK, WARN } = require('./_danger-patterns.cjs'); // 정본 = 그 파일. 여기에 사본 두지 말 것.
 const { execSync } = require('child_process');
 
@@ -41,9 +41,12 @@ if (/INSERT\s+INTO\s+items\b/i.test(cmd) || /[\w-]*item[\w-]*\.sql/i.test(cmd)) 
 
 // 4) 커밋 전 타입체크 게이트 (실패 시 차단)
 if (/(^|&&|;|\s)git(\s+-[cC]\s+\S+)*\s+commit/i.test(cmd)) {
+  // 검사 기준 = 커밋이 실제로 일어나는 저장소(worktree 면 그 worktree) — _util.cjs bashTargetRoot 참조
+  const RUN_ROOT = bashTargetRoot(inp, cmd) || ROOT;
+  if (RUN_ROOT !== ROOT) console.log(`[HOOK] 커밋 게이트 대상 = ${RUN_ROOT}`);
   try {
     execSync('npx tsc --noEmit --incremental --tsBuildInfoFile .claude/.tsbuildinfo', {
-      cwd: ROOT,
+      cwd: RUN_ROOT,
       stdio: 'pipe',
     });
     console.log('[HOOK] 타입체크 통과. /review-checklist 실행 여부 확인.');
@@ -61,7 +64,7 @@ if (/(^|&&|;|\s)git(\s+-[cC]\s+\S+)*\s+commit/i.test(cmd)) {
   // 6) 훅 자신이 변경된 커밋만 위험명령 패턴 회귀 테스트 (2026-08-11)
   //    차단 규칙은 「막아야 할 것」만큼 「막으면 안 되는 것」도 명세돼야 한다 — 그 명세가 selftest 다.
   let dirty = '';
-  try { dirty = execSync('git status --porcelain', { cwd: ROOT, stdio: 'pipe' }).toString(); } catch { /* git 미가용 = 게이트 생략 */ }
+  try { dirty = execSync('git status --porcelain', { cwd: RUN_ROOT, stdio: 'pipe' }).toString(); } catch { /* git 미가용 = 게이트 생략 */ }
 
   const gates = [
     [/\.claude\/(skills\/.*\/SKILL\.md|agents\/.*\.md)/, 'node scripts/skill-audit.cjs',
@@ -84,7 +87,7 @@ if (/(^|&&|;|\s)git(\s+-[cC]\s+\S+)*\s+commit/i.test(cmd)) {
   for (const [scope, run, why] of gates) {
     if (!scope.test(dirty)) continue;
     try {
-      execSync(run, { cwd: ROOT, stdio: 'pipe' });
+      execSync(run, { cwd: RUN_ROOT, stdio: 'pipe' });
     } catch (e) {
       const out = ((e.stderr || '').toString() + (e.stdout || '').toString());
       console.error(`[BLOCK] ${why}:\n` + out.slice(0, 1500));

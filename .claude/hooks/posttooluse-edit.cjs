@@ -1,6 +1,6 @@
 // PostToolUse (matcher: Edit|Write) — 라우트/마이그/JSX 리마인더 + JS문법 게이트 + DOM회귀 게이트 + 편집카운터.
 // 원래 5~6개로 흩어진 훅을 단일 프로세스로 통합. file_path를 1회 파싱(원본 raw grep 오탐 제거).
-const { ROOT, readInput } = require('./_util.cjs');
+const { ROOT, readInput, fileRoot } = require('./_util.cjs');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -9,6 +9,8 @@ const inp = readInput();
 let file = (inp.tool_input && inp.tool_input.file_path) || '';
 file = file.replace(/\\/g, '/');
 if (!file) process.exit(0);
+// 검사 기준 = 편집한 파일이 속한 저장소(worktree 면 그 worktree) — _util.cjs fileRoot 참조(2026-09-26 #75)
+const RROOT = fileRoot(file) || ROOT;
 
 const msgs = [];
 
@@ -31,8 +33,8 @@ if (/IllustratorAutomat\/.*\.(jsx|js|html|css|xml)$/i.test(file)) {
 //   ⚠️ 차단이다(exit 2) — 경고로 두면 무시하고 커밋되고, 커밋 훅은 IA 파일이 dirty 일 때만 돈다.
 if (/IllustratorAutomat\/.*\.(jsx|js)$/i.test(file) && !/\/(bin|obj|publish[^/]*)\//.test(file)) {
   try {
-    const abs = path.isAbsolute(file) ? file : path.join(ROOT, file)
-    execSync(`node scripts/empty-catch-audit.cjs "${abs}"`, { cwd: ROOT, stdio: 'pipe' });
+    const abs = path.isAbsolute(file) ? file : path.join(RROOT, file)
+    execSync(`node scripts/empty-catch-audit.cjs "${abs}"`, { cwd: RROOT, stdio: 'pipe' });
   } catch (e) {
     console.error('[HOOK-FAIL] 빈 catch 에 사유가 없습니다 — catch (e) { /* ignore: 왜 무시해도 되는지 */ } 또는 실패를 기록할 것:\n'
       + ((e.stderr || e.stdout || e.message).toString().slice(0, 1200)));
@@ -43,7 +45,7 @@ if (/IllustratorAutomat\/.*\.(jsx|js)$/i.test(file) && !/\/(bin|obj|publish[^/]*
 // 문서 다이어트 게이트 — 현황판/메모리 인덱스 비대화 즉시 경고 (2026-08-10, 90K자 사고 재발 방지)
 if (/(PROJECT_STATUS|memory\/MEMORY)\.md$/.test(file)) {
   try {
-    execSync('node scripts/doc-diet-audit.cjs', { cwd: ROOT, stdio: 'pipe' });
+    execSync('node scripts/doc-diet-audit.cjs', { cwd: RROOT, stdio: 'pipe' });
   } catch (e) {
     msgs.push('[HOOK] 문서 비대화 감지 — 완료(✅) 상세는 ARCHIVE 로:\n' + ((e.stderr || e.stdout || '').toString().slice(0, 800)));
   }
@@ -53,7 +55,7 @@ if (/(PROJECT_STATUS|memory\/MEMORY)\.md$/.test(file)) {
 // 뒷부분이 경고 없이 사라진다. auto-improve 가 8KB→197KB(24배)로 자란 걸 아무도 못 잡은 이유 = 감사망 밖.
 if (/\.claude\/(skills\/.*\/SKILL\.md|agents\/.*\.md)$/.test(file)) {
   try {
-    execSync('node scripts/skill-audit.cjs', { cwd: ROOT, stdio: 'pipe' });
+    execSync('node scripts/skill-audit.cjs', { cwd: RROOT, stdio: 'pipe' });
   } catch (e) {
     msgs.push('[HOOK] 스킬 정의 문제 — 본문은 목차·분기만, 누적 지식은 references/ 로:\n'
       + ((e.stderr || e.stdout || '').toString().slice(0, 800)));
@@ -63,7 +65,7 @@ if (/\.claude\/(skills\/.*\/SKILL\.md|agents\/.*\.md)$/.test(file)) {
 // JS 문법 게이트 (src/scripts/*.js) — silent-fail 방지, 실패 시 차단
 if (/src\/scripts\/.*\.js$/.test(file)) {
   try {
-    const abs = path.isAbsolute(file) ? file : path.join(ROOT, file) // file_path는 절대경로 — ROOT와 join 시 중복됨
+    const abs = path.isAbsolute(file) ? file : path.join(RROOT, file) // file_path는 절대경로 — ROOT와 join 시 중복됨
     execSync(`node --check "${abs}"`, { stdio: 'pipe' });
   } catch (e) {
     console.error('[HOOK-FAIL] JS 문법 오류 (silent-fail 방지):\n' + ((e.stderr || e.stdout || e.message).toString().slice(0, 1500)));
@@ -74,9 +76,9 @@ if (/src\/scripts\/.*\.js$/.test(file)) {
 // DOM 참조 회귀 게이트 (src/pages|scripts 의 .ts/.js)
 if (/src\/(pages|scripts)\/.*\.(ts|js)$/.test(file)) {
   try {
-    const out = execSync('node scripts/check-dom-refs.cjs', { cwd: ROOT, encoding: 'utf8' });
+    const out = execSync('node scripts/check-dom-refs.cjs', { cwd: RROOT, encoding: 'utf8' });
     const cnt = (out.match(/^ {2}src/gm) || []).length; // 슬래시 무관 (정/역 모두 "  src"로 시작)
-    const bl = path.join(ROOT, '.claude', '.dom-baseline');
+    const bl = path.join(RROOT, '.claude', '.dom-baseline');
     let prev = NaN;
     try { prev = parseInt(fs.readFileSync(bl, 'utf8').trim(), 10); } catch {}
     if (isNaN(prev)) {
@@ -98,7 +100,7 @@ if (/src\/(pages|scripts)\/.*\.(ts|js)$/.test(file)) {
 //   try/catch 가 삼키면 토스트 한 줄로 격하된다 — tsc·check:dom·smoke 전부 못 본다. 게이트 자체 오류(exit≠1)는 차단하지 않음.
 if (/src\/.*\.(ts|js)$/.test(file)) {
   try {
-    execSync('node scripts/check-fn-refs.cjs --strict', { cwd: ROOT, stdio: 'pipe' });
+    execSync('node scripts/check-fn-refs.cjs --strict', { cwd: RROOT, stdio: 'pipe' });
   } catch (e) {
     const out = ((e.stdout || '') + (e.stderr || '')).toString();
     if (e.status === 1 && /정의처 없는 함수 호출/.test(out)) {
