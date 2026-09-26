@@ -287,3 +287,13 @@ WSDL(`ws.baroservice.com/{TI,CARD,BANKACCOUNT}.asmx?WSDL`)을 받아 대조했�
 ## 훅 검사 기준 폴더 (#75, 2026-09-26)
 편집·커밋 훅이 `ROOT`(훅 파일 위치 = 메인 체크아웃)를 검사해, worktree 의 타입 오류·미정의 함수가 통과하고 메인의 남의 WIP 로 막히기도 했다.
 → `_util.cjs` `fileRoot`(편집 파일의 저장소)·`bashTargetRoot`(`cd X &&`·`git -C X`·입력 cwd 순) — 이 프로젝트 저장소가 아니면 ROOT 폴백. 커밋 게이트는 대상 폴더를 출력한다. `test:hookguard` 에 6건(양방향 확인).
+
+## 웹 밖 축 (2026-09-26) — 코드 반영, **현장 배포는 별도**
+
+| # | 축 | 반영 | 현장 반영 방법 |
+|---|---|---|---|
+| 42 | LogWatcher | 큐 재전송 중 꺼져도 미전송 보존(in-flight 목록·처리 끝난 것만 제거) | `make-kit.ps1` 키트 → 장비 PC 설치(방문) |
+| 신규 | LogWatcher | ★FLEXI 폴백 억제 키를 **시작+12h** 에 버려 지각 결과가 실적 2건 — **만든 시각** 기준으로. selftest 가 밤 9시 이후 실패하던 원인(키트 조립 중단) | 위와 같음 |
+| 80 | caps-worker | 동기화 실패를 삼키지 않음(HTTP 500) · MES 수동 요청 실패 시 워커가 최대 5회 재시도 | `Z:\Designs\caps-worker` 교체 + 경리 PC 서비스 재시작 |
+| 43 | IA 에이전트 JSX | ProcessOrderItem·ExtractGroups 예외 시 연 문서를 닫는다 | `ia:deploy`(축1 = 실행 중 exe 폴더) |
+| 81 | IA 에이전트 C# | JSX 실행 직전 이전 `ia_error.log` 삭제 | 에이전트 exe 재빌드·교체 + 재시작 |

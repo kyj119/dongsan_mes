@@ -405,7 +405,10 @@ namespace LogWatcher
                         Console.WriteLine($"[QUEUE] Retrying {queue.Count} queued events...");
                         var queued = queue.DequeueAll();
                         foreach (var evt in queued)
+                        {
                             handleResult(evt, await apiClient.SendEventAsync(evt));
+                            queue.Complete(evt);   // 처리 끝난 것만 파일에서 뺀다(중간에 꺼져도 남은 건 보존)
+                        }
                     }
 
                     // Backoff

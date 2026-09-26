@@ -219,6 +219,7 @@ function main(sourceFile, outputFolder, requestId, thumbSize, epsWidthMm, epsHei
     //   boilerplate라 파싱으로 "hang할 파일 vs 정상 파일"을 구분 불가 → 이미지 전용까지 오탐 → 제거.
     //   (미설치 폰트 hang은 RunJsxScript 2분 타임아웃+Illustrator kill + 서버 terminal/자동만료로 방어)
     var doc = app.open(file);
+    _iaOpenedDoc = doc;
     var mmPerPt = 1.0 / 2.834645669;
 
     // ── AUTO-FIX: CMYK + 텍스트 아웃라인 ──
@@ -531,6 +532,7 @@ var _scriptDir = (typeof _ia_params_override_path !== "undefined" && _ia_params_
     ? new File(_ia_params_override_path).parent.fsName
     : new File($.fileName).parent.fsName;
 var _outputForLog = "";
+var _iaOpenedDoc = null;   // main 이 연 문서 — 바깥 catch 가 닫는다
 try {
     var _cfgPathEG = (typeof _ia_params_override_path !== "undefined" && _ia_params_override_path)
         ? _ia_params_override_path
@@ -553,4 +555,7 @@ try {
     _logFile.write("JSError: " + e.message + " (line " + e.line + ")");
     _logFile.close();
     $.writeln("ExtractGroups EXCEPTION: " + e.message + " (line " + e.line + ")");
+    // 예외로 끝나도 연 문서는 닫는다(2026-09-26 리뷰 #43) — 안 닫으면 숨김·임시 레이어·아트보드 변경이 적용된 채
+    //   일러에 남아, 다음 잡이 같은 파일을 열 때 그 상태를 이어받거나 문서가 쌓인다.
+    try { if (_iaOpenedDoc) _iaOpenedDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eClose) { /* ignore: 이미 닫혔거나 참조가 무효 — 닫기 실패가 원래 오류를 가리면 안 된다 */ }
 }

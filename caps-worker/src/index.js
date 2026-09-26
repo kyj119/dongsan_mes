@@ -50,6 +50,9 @@ async function runSync(triggerType, explicitFrom, explicitTo) {
     logger.info(`=== 동기화 완료: +${result.inserted} ~${result.updated} =${result.skipped} !${result.errors} ===`);
   } catch (err) {
     logger.error('동기화 실패:', err.message);
+    // ★삼키지 않는다(2026-09-26 리뷰 #80) — 예전엔 여기서 끝나 HTTP 수동 트리거가 실패해도 200 「Sync completed」를
+    //   돌려줬다. 호출부(시작·스케줄·HTTP·폴링)가 각자 catch 한다.
+    throw err;
   }
 }
 
@@ -172,8 +175,26 @@ async function main() {
 
 function startPendingPoller() {
   var POLL_INTERVAL = 30000; // 30초
+  // MES 는 GET /sync/pending 때 요청을 **이미 소비**한다(settings 값을 비움). 여기서 실패하면 요청이 흔적 없이 사라져,
+  //   기간을 지정한 재동기화가 안 된 채 끝났다(#80). → 실패한 요청을 기억해 다음 폴링들에서 최대 5회 다시 시도한다.
+  var retryReq = null; // { from, to, attempts }
+  var MAX_RETRY = 5;
 
   async function checkPending() {
+    if (retryReq) {
+      retryReq.attempts++;
+      logger.info('수동 동기화 재시도 ' + retryReq.attempts + '/' + MAX_RETRY + (retryReq.from && retryReq.to ? ' 기간 ' + retryReq.from + '~' + retryReq.to : ''));
+      try {
+        await runSync('MANUAL', retryReq.from, retryReq.to);
+        retryReq = null;
+      } catch (e) {
+        if (retryReq.attempts >= MAX_RETRY) {
+          logger.error('수동 동기화 재시도 포기(' + MAX_RETRY + '회) — MES 에서 다시 요청하세요: ' + (e && e.message));
+          retryReq = null;
+        }
+      }
+      return;
+    }
     try {
       var res = await axios.get(config.mesUrl + '/api/caps/sync/pending', {
         headers: { 'X-Agent-Key': config.mesApiKey },
@@ -185,7 +206,12 @@ function startPendingPoller() {
         var pTo = normYmd(res.data.to_date);
         logger.info('수동 동기화 요청 감지 (requested_at: ' + res.data.requested_at + ')' +
           (pFrom && pTo ? ' 기간 ' + pFrom + '~' + pTo : ''));
-        await runSync('MANUAL', pFrom, pTo);
+        try {
+          await runSync('MANUAL', pFrom, pTo);
+        } catch (syncErr) {
+          retryReq = { from: pFrom, to: pTo, attempts: 0 };
+          logger.warn('수동 동기화 실패 — 다음 폴링에서 다시 시도합니다: ' + (syncErr && syncErr.message));
+        }
       }
     } catch (err) {
       // 네트워크 오류 시 무시 (다음 폴링에서 재시도)

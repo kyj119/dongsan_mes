@@ -3832,6 +3832,15 @@ namespace IllustratorAutomation
                             + $"var _ia_trace_path = \"{traceEscaped}\";\n";
             string scriptContent = preamble + File.ReadAllText(scriptPath, System.Text.Encoding.UTF8);
 
+            // 지난 잡의 오류 로그를 지운다(2026-09-26 리뷰 #81) — JSX 가 로그 없이 실패하면 호출부가 이 파일을 읽어
+            //   **이전 잡의 오류 문구**를 이번 실패 원인으로 보고했다. JSX 는 params 와 같은 폴더에 쓴다.
+            try
+            {
+                string staleErr = Path.Combine(Path.GetDirectoryName(paramsJsonPath) ?? ".", "ia_error.log");
+                if (File.Exists(staleErr)) File.Delete(staleErr);
+            }
+            catch (Exception exDel) { Console.WriteLine($"   ⚠ 이전 ia_error.log 삭제 실패(오래된 오류가 보일 수 있다): {exDel.Message}"); }
+
             _lastJsxStatus = "";
             _lastJsxFingerprint = JsxFingerprint(scriptPath);
             // DoJavaScript는 동기이지만 Task로 감싸 타임아웃 처리. 반환값=JSX 최종 상태(위 주석).

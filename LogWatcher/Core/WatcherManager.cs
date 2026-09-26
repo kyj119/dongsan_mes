@@ -103,6 +103,7 @@ namespace LogWatcher.Core
                 foreach (var evt in queued)
                 {
                     if (HandleSendResult(evt, await _apiClient.SendEventAsync(evt))) anySent = true;
+                    _queue.Complete(evt);   // 처리 끝난 것만 파일에서 뺀다(중간에 꺼져도 남은 건 보존)
                 }
 
                 if (anySent)

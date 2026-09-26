@@ -106,6 +106,7 @@ function main() {
 
     // ── 1. 소스 파일 열기 ──
     var doc = app.open(file);
+    _iaOpenedDoc = doc;
 
     // AUTO-FIX
     try {
@@ -951,6 +952,7 @@ function main() {
 }
 
 // 실행
+var _iaOpenedDoc = null;   // main 이 연 문서 — 바깥 catch 가 닫는다
 var _scriptDirForLog = (typeof _ia_params_override_path !== "undefined" && _ia_params_override_path)
     ? new File(_ia_params_override_path).parent.fsName
     : new File($.fileName).parent.fsName;
@@ -962,4 +964,7 @@ try {
     _logFile.write("JSError: " + e.message + " (line " + e.line + ")");
     _logFile.close();
     $.writeln("ProcessOrderItem EXCEPTION: " + e.message + " (line " + e.line + ")");
+    // 예외로 끝나도 연 문서는 닫는다(2026-09-26 리뷰 #43) — 안 닫으면 숨김·임시 레이어·아트보드 변경이 적용된 채
+    //   일러에 남아, 다음 잡이 같은 파일을 열 때 그 상태를 이어받거나 문서가 쌓인다.
+    try { if (_iaOpenedDoc) _iaOpenedDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eClose) { /* ignore: 이미 닫혔거나 참조가 무효 — 닫기 실패가 원래 오류를 가리면 안 된다 */ }
 }

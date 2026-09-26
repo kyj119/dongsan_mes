@@ -76,6 +76,8 @@ namespace LogWatcher.Parsers
         {
             public DateTime Start { get; set; }        // 스탬프 조인용 (ClaimRip 과 같은 _tolSec 판정)
             public string Name { get; set; } = "";     // 이름 조인용 (KeyOf 와 같은 값)
+            // 키를 만든 시각 — 정리 기준. 옛 상태 파일엔 없다(= default) → Start 로 대체.
+            public DateTime AddedAt { get; set; }
         }
 
         public string EquipmentId { get; }
@@ -223,7 +225,7 @@ namespace LogWatcher.Parsers
                     events.Add(rip);
                     // 이 립은 큐에서 사라진다. 나중에 결과가 도착하면 조인 후보를 못 찾아 UNMATCHED 로
                     // **한 번 더** 나간다(같은 물리 인쇄가 실적 2건) → 조인키를 남겨 그때 억제한다.
-                    _fallbackKeys.Add(new FallbackKey { Start = _pending[i].Start, Name = KeyOf(rip) });
+                    _fallbackKeys.Add(new FallbackKey { Start = _pending[i].Start, Name = KeyOf(rip), AddedAt = DateTime.Now });
                     _pending.RemoveAt(i);
                 }
             }
@@ -231,8 +233,11 @@ namespace LogWatcher.Parsers
             // 폴백 억제 키 정리 — 다시 붙을 일이 없어진 것은 버린다(무한 증식 방지).
             if (_fallbackKeys.Count > 0 && _fallbackHours > 0)
             {
+                // ★정리 기준 = 키를 **만든** 시각(2026-09-26). 예전엔 인쇄 **시작** 시각이라, 키는 시작 후 6h 뒤에 생기는데
+                //   시작+12h 에 버려져 수명이 몇 시간뿐이었다 — 그 뒤 도착한 지각 결과가 실적 2건이 됐고,
+                //   selftest 는 고정 09:00 을 써서 밤 9시 이후에만 실패했다(시각 의존).
                 var fbCut = DateTime.Now.AddHours(-_fallbackHours * 2.0);
-                _fallbackKeys.RemoveAll(k => k.Start < fbCut);
+                _fallbackKeys.RemoveAll(k => (k.AddedAt == default ? k.Start : k.AddedAt) < fbCut);
             }
             if (_fallbackKeys.Count > 500) _fallbackKeys.RemoveRange(0, _fallbackKeys.Count - 500);
 
